@@ -1,0 +1,43 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+app/build/
+.kotlin/
+
+# Built application files
+*.apk
+*.aar
+*.aab
+/artifacts/
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+build/
+
+# Android Studio Navigation editor temp files
+.navigation/
+
+# Google Services (Firebase)
+google-services.json
+
+# Profiling and traces
+*.hprof
+*.tracer
+
+# Temporary screenshots
+*.png
