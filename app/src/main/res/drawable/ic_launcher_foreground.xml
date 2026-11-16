@@ -1,21 +1,102 @@
-<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Sentinel Shield Outline -->
-    <path
-        android:fillColor="#16263E"
-        android:strokeColor="#10B981"
-        android:strokeWidth="2.8"
-        android:pathData="M54,24L78,33V52C78,67.5 67.8,79.8 54,84C40.2,79.8 30,67.5 30,52V33L54,24Z" />
-    <!-- Telemetry Pulse Line -->
+
+    <!-- Soft emerald ambient halo -->
+    <path android:pathData="M54,54m-32,0a32,32 0 1,1 64,0a32,32 0 1,1 -64,0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="32">
+                <item android:offset="0.0" android:color="#2E34D399" />
+                <item android:offset="0.6" android:color="#1410B981" />
+                <item android:offset="1.0" android:color="#00000000" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Left 3D Shield Facet (Mint -> Emerald) -->
+    <path android:pathData="M54,25.5 L31,35.2 C31,55.5 39.2,72.8 54,82.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="31"
+                android:startY="25.5"
+                android:endX="54"
+                android:endY="82.5">
+                <item android:offset="0.0" android:color="#34D399" />
+                <item android:offset="0.5" android:color="#10B981" />
+                <item android:offset="1.0" android:color="#059669" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Right 3D Shield Facet (Cyan -> Deep Teal) -->
+    <path android:pathData="M54,25.5 L77,35.2 C77,55.5 68.8,72.8 54,82.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="77"
+                android:startY="25.5"
+                android:endX="54"
+                android:endY="82.5">
+                <item android:offset="0.0" android:color="#38BDF8" />
+                <item android:offset="0.5" android:color="#14B8A6" />
+                <item android:offset="1.0" android:color="#047857" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Inner Dark-Glass Shield Core -->
+    <path android:pathData="M54,30.2 L72.4,38.0 C72.4,54.6 65.8,68.6 54,76.8 C42.2,68.6 35.6,54.6 35.6,38.0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="30.2"
+                android:endX="54"
+                android:endY="76.8">
+                <item android:offset="0.0" android:color="#0F2126" />
+                <item android:offset="0.5" android:color="#0E1626" />
+                <item android:offset="1.0" android:color="#081118" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Specular Top Crown Highlight -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#34D399"
+        android:pathData="M31,35.2 L54,25.5 L77,35.2"
+        android:strokeColor="#B8FFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:strokeWidth="3.2"
-        android:pathData="M36,54H45L49.5,43L55.5,64L60.5,50L64,54H72" />
+        android:strokeWidth="1.1" />
+
+    <!-- Subtle Telemetry Pulse Glow Underlay -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39.2,55.0 L47.2,55.0 L51.3,42.5 L56.4,65.8 L60.8,49.2 L64.2,55.0 L68.8,55.0"
+        android:strokeColor="#5534D399"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="4.6" />
+
+    <!-- Crisp ECG / Telemetry Pulse Waveform -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39.2,55.0 L47.2,55.0 L51.3,42.5 L56.4,65.8 L60.8,49.2 L64.2,55.0 L68.8,55.0"
+        android:strokeColor="#A7F3D0"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.5" />
+
+    <!-- Luminous Peak Node -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M51.3,42.5m-1.9,0a1.9,1.9 0 1,1 3.8,0a1.9,1.9 0 1,1 -3.8,0" />
 </vector>
