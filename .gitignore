@@ -39,5 +39,6 @@ google-services.json
 *.hprof
 *.tracer
 
-# Temporary screenshots
+# Temporary screenshots (preserve app mipmap/drawable PNG resources)
 *.png
+!app/src/main/res/**/*.png
