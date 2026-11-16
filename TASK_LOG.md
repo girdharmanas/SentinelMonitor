@@ -14,6 +14,32 @@ _No active task in progress._
 
 ## 📋 Task History & Completed Work
 
+### `TASK-SENTINEL-MONITOR-V1-FULL-SUITE-006`: Deliver Full Flagship `Sentinel Monitor v1.0.0` Suite + `Sentinel Launcher` Deep-Link Integration
+- **Status:** COMPLETED
+- **Started:** 2026-11-16 21:32
+- **Completed:** 2026-11-16 22:48
+- **Branch:** `main`
+- **Objective:** Implement all 5 flagship pillars of Sentinel Monitor (`v1.0.0`) and wire `sentinel://monitor?tab=...` deep-links from `Sentinel Launcher` (`v1.6.3`).
+- **Architectural Improvements & Features Delivered:**
+  1. **Deep Hardware, Kernel & Power Telemetry (`SystemTelemetryEngine.kt`, `VitalsTab.kt`, `TelemetryChartsAndCards.kt`)**:
+     - Per-core live CPU clock frequencies (`/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq`), cluster scaling bars, governor readout, SoC identifier, and LTPO Display refresh rate (`Hz`).
+     - `/proc/meminfo` physical RAM + ZRAM/Swap + Kernel Page Cache breakdown with live 60-sample Compose `Canvas` Bezier/linear sparkline curves.
+     - Signed Battery current (`mA`, auto-normalizing OEM `µA` vs `mA`), real-time Wattage (`+W` charging / `-W` drain), voltage (`mV`), Android 14+ cycle count, and `PowerManager` thermal throttling status.
+     - Monotonic `TrafficStats` `↑/↓ KB/s` & `MB/s` throughput, Wi-Fi band (`2.4 / 5 / 6 GHz`), link speed (`Mbps`), RSSI (`dBm`), and VPN indicator.
+  2. **True Culprit & Process Triage + App X-Ray (`AppInspectorEngine.kt`, `ProcessesAndXRayTab.kt`)**:
+     - 24h foreground activity ranking & App Standby Buckets (`ACTIVE`, `WORKING_SET`, `FREQUENT`, `RARE`, `STOPPED`), `ActivityManager.getHistoricalProcessExitReasons` (`CRASH`, `ANR`, `LOW_MEMORY`), Protected Whitelist shield toggles, and Guided Top-5 Hibernate/Force-Stop Queue.
+     - **App X-Ray ModalBottomSheet**: `minSdk` / `targetSdk`, version code, installer source, native `.so` ABIs, App/Data/Cache footprint, Sensitive Permissions chips, and **1-tap SHA-1 & SHA-256 certificate copy**.
+  3. **Per-App Storage & Cache Hog Analyzer (`StorageSecurityWatchdogTabs.kt`)**:
+     - `StorageStatsManager` exact per-app `App + Data + Reclaimable Cache` breakdown ranked by biggest cache offenders with 1-tap jump to clear multi-GB caches.
+  4. **Sentinel Security & Sideload Auditor (`StorageSecurityWatchdogTabs.kt`)**:
+     - Live audit across Accessibility services, Notification Listeners, Install Unknown Apps, Screen Overlays, All Files Access, Background Location, Camera/Mic, Sideloaded APKs, and Legacy `targetSdk < 31` apps.
+  5. **Proactive Watchdog, 24h Ring Buffer & Glanceable Surfaces (`SentinelWatchdogJobService.kt`, `SentinelSweepTileService.kt`, `MiniHudOverlayService.kt`, `SentinelGlanceWidgetProvider.kt`, `MainActivity.kt`)**:
+     - Configurable 15m `JobScheduler` Watchdog alerts (thermal, low `/data` storage, abnormal `%/hr` battery drain) + 96-point 24h DataStore trend sparklines.
+     - Quick Settings `TileService` (`Sentinel Sweep`), draggable Floating Developer Mini-HUD pill, Home Screen `AppWidgetProvider`, and `sentinel://monitor?tab=...` deep-links integrated into `Sentinel Launcher`.
+- **Verification:** `4/4` JUnit test suites (`SentinelTelemetryTest`), `lintVitalRelease` (`0` errors), R8 `assembleRelease`, and live `Pixel_9_Pro_XL` verification across all 5 tabs & `onNewIntent` deep-links (`VITALS_RAM_ZRAM=True`, `CPU_CLUSTERS=True`, `PROCESSES_TAB_ACTIVE=True`, `STORAGE_CACHE_ANALYZER=True`, `SECURITY_AUDIT_TAB=True`, `WATCHDOG_TAB=True`, `CRASH_LOG_LEN=0`).
+
+---
+
 ### `TASK-POST-NOTIFICATIONS-PERM-005`: Declare `POST_NOTIFICATIONS` Permission for Android 13–15 System Notification Toggle (`v0.1.3`)
 - **Status:** COMPLETED
 - **Started:** 2026-11-16 19:45

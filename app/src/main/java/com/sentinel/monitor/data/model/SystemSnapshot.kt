@@ -1,6 +1,29 @@
 package com.sentinel.monitor.data.model
 
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Locale
+import kotlin.math.abs
+
+enum class SentinelTab(val routeKey: String, val label: String) {
+    VITALS("overview", "Vitals"),
+    PROCESSES("processes", "Processes"),
+    STORAGE("storage", "Storage"),
+    SECURITY("security", "Security"),
+    WATCHDOG("watchdog", "Watchdog");
+
+    companion object {
+        fun fromQueryParam(param: String?): SentinelTab {
+            return when (param?.trim()?.lowercase(Locale.US)) {
+                "processes", "apps", "ram", "memory" -> PROCESSES
+                "storage", "cache", "disk" -> STORAGE
+                "security", "permissions", "audit" -> SECURITY
+                "watchdog", "alerts", "hud", "history" -> WATCHDOG
+                else -> VITALS
+            }
+        }
+    }
+}
 
 enum class TelemetryRag {
     HEALTHY,
@@ -19,7 +42,7 @@ enum class TelemetryRag {
 
         fun fromBatteryTempCelsius(tempC: Float): TelemetryRag {
             return when {
-                tempC >= 42.0f -> CRITICAL
+                tempC >= 41.5f -> CRITICAL
                 tempC >= 37.5f -> ELEVATED
                 else -> HEALTHY
             }
@@ -27,21 +50,64 @@ enum class TelemetryRag {
     }
 }
 
+data class CpuCoreSample(
+    val coreIndex: Int,
+    val curFreqKhz: Long,
+    val minFreqKhz: Long,
+    val maxFreqKhz: Long,
+    val governor: String = "schedutil"
+) {
+    val utilizationFraction: Float
+        get() = when {
+            maxFreqKhz <= 0L || curFreqKhz <= 0L -> 0f
+            maxFreqKhz > minFreqKhz ->
+                ((curFreqKhz - minFreqKhz).toDouble() / (maxFreqKhz - minFreqKhz).toDouble())
+                    .toFloat().coerceIn(0.04f, 1f)
+            else -> (curFreqKhz.toDouble() / maxFreqKhz.toDouble()).toFloat().coerceIn(0f, 1f)
+        }
+
+    val curFreqMhz: Int
+        get() = (curFreqKhz / 1000L).toInt().coerceAtLeast(0)
+
+    val maxFreqMhz: Int
+        get() = (maxFreqKhz / 1000L).toInt().coerceAtLeast(0)
+}
+
 data class SystemSnapshot(
     val totalRamBytes: Long = 0L,
     val availableRamBytes: Long = 0L,
+    val cachedRamBytes: Long = 0L,
+    val swapTotalBytes: Long = 0L,
+    val swapFreeBytes: Long = 0L,
     val isLowMemory: Boolean = false,
     val totalStorageBytes: Long = 0L,
     val freeStorageBytes: Long = 0L,
     val batteryPercent: Int = 100,
     val batteryTempCelsius: Float = 28.0f,
+    val batteryVoltageMv: Int = 4000,
+    val batteryCurrentMa: Float = 0f,
+    val batteryPowerWatts: Float = 0f,
+    val batteryCycleCount: Int = -1,
     val isCharging: Boolean = false,
+    val thermalStatusLabel: String = "Nominal",
+    val thermalSeverityLevel: Int = 0,
     val cpuCoreCount: Int = 1,
+    val cpuCores: List<CpuCoreSample> = emptyList(),
+    val cpuGovernor: String = "schedutil",
+    val netRxBytesPerSec: Long = 0L,
+    val netTxBytesPerSec: Long = 0L,
+    val netTransportLabel: String = "Offline",
+    val wifiBandOrLinkLabel: String = "",
+    val isVpnActive: Boolean = false,
+    val displayRefreshHz: Int = 60,
+    val socModel: String = "",
     val deviceModel: String = "Android Device",
     val androidVersionLabel: String = "Android",
     val primaryAbi: String = "arm64-v8a",
     val uptimeMillis: Long = 0L,
     val hasUsageStatsAccess: Boolean = false,
+    val hasOverlayPermission: Boolean = false,
+    val isShizukuInstalled: Boolean = false,
     val sampledAtMillis: Long = 0L
 ) {
     val usedRamBytes: Long
@@ -50,6 +116,16 @@ data class SystemSnapshot(
     val ramUsageFraction: Float
         get() = if (totalRamBytes > 0L) {
             (usedRamBytes.toDouble() / totalRamBytes.toDouble()).toFloat().coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+
+    val swapUsedBytes: Long
+        get() = (swapTotalBytes - swapFreeBytes).coerceAtLeast(0L)
+
+    val swapUsageFraction: Float
+        get() = if (swapTotalBytes > 0L) {
+            (swapUsedBytes.toDouble() / swapTotalBytes.toDouble()).toFloat().coerceIn(0f, 1f)
         } else {
             0f
         }
@@ -63,29 +139,137 @@ data class SystemSnapshot(
         } else {
             0f
         }
+
+    val avgCpuUtilizationFraction: Float
+        get() = if (cpuCores.isNotEmpty()) {
+            cpuCores.map { it.utilizationFraction }.average().toFloat().coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+
+    val peakCpuMhz: Int
+        get() = cpuCores.maxOfOrNull { it.curFreqMhz } ?: 0
+}
+
+data class VitalsHistoryPoint(
+    val timestampMs: Long,
+    val ramFraction: Float,
+    val batteryPercent: Int,
+    val tempCelsius: Float,
+    val powerWatts: Float,
+    val cpuFraction: Float
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("ts", timestampMs)
+        put("ram", ramFraction.toDouble())
+        put("bat", batteryPercent)
+        put("tmp", tempCelsius.toDouble())
+        put("w", powerWatts.toDouble())
+        put("cpu", cpuFraction.toDouble())
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject): VitalsHistoryPoint = VitalsHistoryPoint(
+            timestampMs = obj.optLong("ts", 0L),
+            ramFraction = obj.optDouble("ram", 0.0).toFloat(),
+            batteryPercent = obj.optInt("bat", 100),
+            tempCelsius = obj.optDouble("tmp", 28.0).toFloat(),
+            powerWatts = obj.optDouble("w", 0.0).toFloat(),
+            cpuFraction = obj.optDouble("cpu", 0.0).toFloat()
+        )
+
+        fun decodeList(jsonStr: String): List<VitalsHistoryPoint> {
+            if (jsonStr.isBlank()) return emptyList()
+            return runCatching {
+                val arr = JSONArray(jsonStr)
+                buildList(arr.length()) {
+                    for (i in 0 until arr.length()) {
+                        arr.optJSONObject(i)?.let { add(fromJson(it)) }
+                    }
+                }
+            }.getOrDefault(emptyList())
+        }
+
+        fun encodeList(points: List<VitalsHistoryPoint>, maxPoints: Int = 96): String {
+            val trimmed = if (points.size > maxPoints) points.takeLast(maxPoints) else points
+            val arr = JSONArray()
+            for (pt in trimmed) arr.put(pt.toJson())
+            return arr.toString()
+        }
+    }
+}
+
+enum class SensitivePermBadge(val shortLabel: String, val riskCategory: String) {
+    ACCESSIBILITY("Accessibility", "Full UI Control"),
+    NOTIFICATION_LISTENER("Notif Listener", "Reads Notifications"),
+    INSTALL_PACKAGES("Install APKs", "Sideload Installer"),
+    OVERLAY("Draw Over Apps", "Screen Overlay"),
+    ALL_FILES("All Files", "Unrestricted Storage"),
+    BACKGROUND_LOCATION("BG Location", "24/7 Tracking"),
+    CAMERA("Camera", "Optical Sensor"),
+    MICROPHONE("Microphone", "Audio Capture")
 }
 
 data class InstalledProcessEntry(
     val packageName: String,
     val appLabel: String,
+    val versionName: String = "",
+    val minSdk: Int = 26,
+    val targetSdk: Int = 35,
     val isSystemApp: Boolean,
+    val isUpdatedSystemApp: Boolean = false,
     val isRecentlyActive: Boolean,
     val lastTimeUsedMillis: Long,
-    val totalForegroundMillis24h: Long
+    val totalForegroundMillis24h: Long,
+    val standbyBucketLabel: String = "NORMAL",
+    val appBytes: Long = 0L,
+    val dataBytes: Long = 0L,
+    val cacheBytes: Long = 0L,
+    val installerSourceLabel: String = "System",
+    val isSideloaded: Boolean = false,
+    val sensitivePermissions: List<SensitivePermBadge> = emptyList()
+) {
+    val totalStorageBytes: Long
+        get() = appBytes + dataBytes + cacheBytes
+
+    val isLegacyTargetSdk: Boolean
+        get() = !isSystemApp && targetSdk in 1..30
+}
+
+data class AppXRayDetails(
+    val entry: InstalledProcessEntry,
+    val versionCode: Long,
+    val firstInstallTimeMs: Long,
+    val lastUpdateTimeMs: Long,
+    val nativeAbis: List<String>,
+    val sha1Fingerprint: String,
+    val sha256Fingerprint: String,
+    val sourceApkDir: String
+)
+
+data class ProcessExitSummary(
+    val packageName: String,
+    val processName: String,
+    val reasonLabel: String,
+    val description: String,
+    val timestampMs: Long,
+    val pssKb: Long
 )
 
 data class MemorySweepReport(
     val sweptAppCount: Int,
+    val skippedWhitelistedCount: Int = 0,
     val reclaimedRamBytes: Long,
     val availableBeforeBytes: Long,
     val availableAfterBytes: Long
 ) {
     fun summaryLabel(): String {
         val freedMb = reclaimedRamBytes.toDouble() / (1024.0 * 1024.0)
+        val wlSuffix = if (skippedWhitelistedCount > 0) " ($skippedWhitelistedCount protected)" else ""
         return if (freedMb >= 1.0) {
-            String.format(Locale.US, "Freed %.1f MB across %d background apps", freedMb, sweptAppCount)
+            String.format(Locale.US, "Freed %.1f MB across %d apps%s", freedMb, sweptAppCount, wlSuffix)
         } else {
-            "Swept $sweptAppCount cached background apps • Memory optimal"
+            "Swept $sweptAppCount cached apps$wlSuffix • Memory optimal"
         }
     }
 }
@@ -102,6 +286,39 @@ object TelemetryFormatters {
             safe >= kb -> String.format(Locale.US, "%.0f KB", safe / kb)
             else -> "$safe B"
         }
+    }
+
+    fun formatSpeedBytesPerSec(bytesPerSec: Long): String {
+        val safe = bytesPerSec.coerceAtLeast(0L)
+        val kb = 1024.0
+        val mb = kb * 1024.0
+        return when {
+            safe >= mb -> String.format(Locale.US, "%.1f MB/s", safe / mb)
+            safe >= kb -> String.format(Locale.US, "%.0f KB/s", safe / kb)
+            else -> "$safe B/s"
+        }
+    }
+
+    fun formatWatts(watts: Float, isCharging: Boolean): String {
+        val mag = abs(watts)
+        if (mag < 0.05f) return if (isCharging) "Trickle / Full" else "0.0 W"
+        val sign = if (isCharging) "+" else "-"
+        return String.format(Locale.US, "%s%.1f W", sign, mag)
+    }
+
+    fun normalizeBatteryCurrentToMilliamps(rawCurrentNow: Long): Float {
+        // Android BatteryManager reports µA on AOSP/Pixel, while certain OEMs report mA directly
+        val absVal = abs(rawCurrentNow)
+        return if (absVal > 15_000L) {
+            rawCurrentNow / 1000f
+        } else {
+            rawCurrentNow.toFloat()
+        }
+    }
+
+    fun computeBatteryWatts(currentMa: Float, voltageMv: Int): Float {
+        if (voltageMv <= 0) return 0f
+        return (abs(currentMa) / 1000f) * (voltageMv / 1000f)
     }
 
     fun formatUptime(uptimeMillis: Long): String {
