@@ -14,6 +14,17 @@ _No active task in progress._
 
 ## 📋 Task History & Completed Work
 
+### `TASK-SENTINEL-DRIVE-HUB-002`: Migrate Google Drive APK Output to Unified `H:/My Drive/Sentinel/Monitor` Hub (`v0.1.0`)
+- **Status:** COMPLETED
+- **Started:** 2026-11-16 18:20
+- **Completed:** 2026-11-16 18:22
+- **Branch:** `main`
+- **Objective:** Align Sentinel Monitor's Google Drive APK auto-upload path with the unified `H:/My Drive/Sentinel/` suite folder hierarchy (`Sentinel/Monitor`, `Sentinel/Launcher`, `Sentinel/Reader`, `Sentinel/Reader Sync`).
+- **Touched Files:** `app/build.gradle.kts`, `AGENTS.md`, `COMMERCIAL_ROADMAP.md`, `README.md`, `TASK_LOG.md`.
+- **Verification:** `testDebugUnitTest` (`3/3`) + R8 `assembleRelease` verified; stale APK purged and fresh `com.sentinel.monitor-<hash>.apk` uploaded to `H:/My Drive/Sentinel/Monitor`.
+
+---
+
 ### `TASK-INITIAL-SETUP-001`: Scaffold Sentinel Monitor (`com.sentinel.monitor`) with Vantage-Parity Rulesets & APK Pipeline (`v0.1.0`)
 - **Status:** COMPLETED
 - **Started:** 2026-11-16 16:48

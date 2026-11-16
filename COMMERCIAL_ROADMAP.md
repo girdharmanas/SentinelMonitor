@@ -32,5 +32,5 @@
 ## 3. Samsung Knox & Android 13–15 Distribution Pipeline
 
 - Modern Samsung One UI (Knox Auto Blocker) and Android 13–15 Restricted Settings penalize sideloaded APKs when granting special access such as `PACKAGE_USAGE_STATS` (Usage Access).
-- For development & direct testing, every `assembleDebug` / `assembleRelease` build automatically publishes `com.sentinel.monitor-<hash>.apk` to `artifacts/` and `H:/My Drive/Sentinel Monitor` (purging stale APKs automatically).
+- For development & direct testing, every `assembleDebug` / `assembleRelease` build automatically publishes `com.sentinel.monitor-<hash>.apk` to `artifacts/` and `H:/My Drive/Sentinel/Monitor` (purging stale APKs automatically).
 - For production & Knox-safe testing, upload signed `.aab` (`bundleRelease`) builds to Google Play's **Internal Testing Track** for instant (~60s) Play-trusted updates.

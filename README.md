@@ -5,5 +5,5 @@ Flagship Android System Process & Resource Task Manager built with Kotlin 2.0, J
 ## Quick Commands
 
 - **Unit Tests:** `./gradlew testDebugUnitTest`
-- **Release APK + Lint (auto-uploads to `artifacts/` & `H:/My Drive/Sentinel Monitor`):** `./gradlew lintVitalRelease assembleRelease`
+- **Release APK + Lint (auto-uploads to `artifacts/` & `H:/My Drive/Sentinel/Monitor`):** `./gradlew lintVitalRelease assembleRelease`
 - **Launch Emulator & Run:** `run.bat`

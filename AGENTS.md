@@ -47,7 +47,7 @@ Whenever the user makes a request (feature addition, refactoring, bug fix, styli
 4. **APK Output Naming & Google Drive Upload Standard:**
    - All generated APKs (debug and release) automatically follow the naming format:
      `${applicationId}-${gitCommitHash}.apk` (e.g., `com.sentinel.monitor-a1b2c3d.apk`).
-   - Every `assemble*` build automatically purges stale files and publishes the latest APK to both `artifacts/` and `H:/My Drive/Sentinel Monitor` (overridable via `-Pgdrive.apk.dir` or `SENTINEL_GDRIVE_DIR`).
+   - Every `assemble*` build automatically purges stale files and publishes the latest APK to both `artifacts/` and `H:/My Drive/Sentinel/Monitor` (overridable via `-Pgdrive.apk.dir` or `SENTINEL_GDRIVE_DIR`).
 
 5. **Detailed Explanation, Automated Git Commit/Push & Verification:**
    - Whenever code changes or bug fixes are completed and verified:

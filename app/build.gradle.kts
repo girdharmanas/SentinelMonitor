@@ -82,7 +82,7 @@ android {
 
                 val gdrivePath = project.findProperty("gdrive.apk.dir")?.toString()
                     ?: System.getenv("SENTINEL_GDRIVE_DIR")
-                    ?: "H:/My Drive/Sentinel Monitor"
+                    ?: "H:/My Drive/Sentinel/Monitor"
                 val gdriveDir = File(gdrivePath)
                 val isGdriveAvailable = gdriveDir.exists()
 
