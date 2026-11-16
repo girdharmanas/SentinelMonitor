@@ -14,6 +14,17 @@ _No active task in progress._
 
 ## 📋 Task History & Completed Work
 
+### `TASK-POST-NOTIFICATIONS-PERM-005`: Declare `POST_NOTIFICATIONS` Permission for Android 13–15 System Notification Toggle (`v0.1.3`)
+- **Status:** COMPLETED
+- **Started:** 2026-11-16 19:45
+- **Completed:** 2026-11-16 19:46
+- **Branch:** `main`
+- **Objective:** Add `<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />` in `AndroidManifest.xml` so Android 13–15 (`targetSdk = 35`) allows enabling app notifications in System Settings instead of locking the toggle off.
+- **Touched Files:** `app/src/main/AndroidManifest.xml`, `app/build.gradle.kts`, `TASK_LOG.md`.
+- **Verification:** `testDebugUnitTest` (`3/3`), `lintVitalRelease`, and R8 `assembleRelease` verified (`0` errors); pushed to `origin/main` and synced to `H:/My Drive/Sentinel/Monitor`.
+
+---
+
 ### `TASK-FIX-LAUNCH-CRASH-004`: Fix CompositionLocal `LocalLifecycleOwner` Launch Crash (`v0.1.2`)
 - **Status:** COMPLETED
 - **Started:** 2026-11-16 19:31
