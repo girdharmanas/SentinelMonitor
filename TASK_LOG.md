@@ -14,6 +14,19 @@ _No active task in progress._
 
 ## 📋 Task History & Completed Work
 
+### `TASK-FIX-LAUNCH-CRASH-004`: Fix CompositionLocal `LocalLifecycleOwner` Launch Crash (`v0.1.2`)
+- **Status:** COMPLETED
+- **Started:** 2026-11-16 19:31
+- **Completed:** 2026-11-16 19:42
+- **Branch:** `main`
+- **Objective:** Resolve immediate crash on launch caused by `androidx.lifecycle.compose.LocalLifecycleOwner` (`lifecycle-runtime-compose:2.8.6`) mismatch with `Compose BOM 2024.04.01` (`Compose UI 1.6.x`), harden telemetry queries with defensive `runCatching`, and verify live on `Pixel_9_Pro_XL` emulator.
+- **Root Cause & Fix:**
+  - `SentinelApp.kt` imported `androidx.lifecycle.compose.LocalLifecycleOwner` from `lifecycle-runtime-compose:2.8.6`, whereas `Compose BOM 2024.04.01` (`Compose UI 1.6.x`) only binds `androidx.compose.ui.platform.LocalLifecycleOwner` inside `ComponentActivity.setContent`, throwing `IllegalStateException: CompositionLocal LocalLifecycleOwner not present` on frame 1.
+  - Switched `SentinelApp.kt` to `androidx.compose.ui.platform.LocalLifecycleOwner`, removed the mismatched `lifecycle-runtime-compose` dependency from `app/build.gradle.kts`, and wrapped `hasUsageStatsPermission` in `runCatching`.
+- **Verification:** `3/3` unit tests (`testDebugUnitTest`), `lintVitalRelease`, R8 `assembleRelease`, and live cold-launch + background RAM sweep verification on `Pixel_9_Pro_XL` (`MONITOR_UI_TITLE=True`, `RAM_CARD=True`, `SWEEP_BTN=True`, `MONITOR_SWEEP_RESULT_SHOWN=True`, `0` crashes).
+
+---
+
 ### `TASK-SENTINEL-ICON-FAMILY-003`: Upgrade Sentinel Monitor to Unified 3D-Faceted Sentinel Suite Adaptive & Mipmap Icon Family (`v0.1.1`)
 - **Status:** COMPLETED
 - **Started:** 2026-11-16 19:05
@@ -42,11 +55,4 @@ _No active task in progress._
 - **Completed:** 2026-11-16 16:58
 - **Branch:** `main`
 - **Objective:** Set up the Android System Process & Resource Task Manager (`SentinelMonitor`, `com.sentinel.monitor`) in `G:/Projects/Personal/SentinelMonitor` with identical operational rulesets (`AGENTS.md`, `TASK_LOG.md`, `COMMERCIAL_ROADMAP.md`), `${applicationId}-${gitCommitHash}.apk` artifact naming, automatic Google Drive upload (`H:/My Drive/Sentinel Monitor`), R8 release signing (`sentinel-release.jks`), initial Compose telemetry dashboard + safe RAM sweep engine, and unit test suite.
-- **Architectural Improvements & Deliverables:**
-  1. **Governance & Operational Parity (`AGENTS.md`, `TASK_LOG.md`, `COMMERCIAL_ROADMAP.md`)**:
-     - Established mandatory `TASK_LOG.md` tracking, Zero-Overhead Monitoring Invariant (lifecycle-gated `Lifecycle.State.STARTED` sampling + `Dispatchers.IO`), Safe Process & Storage Reclamation Invariant, automated commit/push protocol, and clickable `file://` reference rules.
-  2. **Gradle Build, Signing & Google Drive APK Auto-Upload (`app/build.gradle.kts`, `sentinel-release.jks`)**:
-     - Configured Gradle 9.7.1, AGP 8.7.2, Kotlin 2.0, Jetpack Compose Material 3, R8 release signing, automatic `${applicationId}-${gitCommitHash}.apk` naming, and `copy<Variant>ApkToArtifacts` publishing directly to `artifacts/` and `H:/My Drive/Sentinel Monitor` (with stale-file purge).
-  3. **Core System Telemetry Engine & Dark-Glass Compose UI (`SystemTelemetryEngine.kt`, `SentinelApp.kt`, `SystemSnapshot.kt`, `Theme.kt`)**:
-     - Built live RAM, `/data` Storage, Battery/Thermal, CPU/ABI/Uptime telemetry sampling, 1-tap Safe Background Memory Sweep protecting critical system/launcher/IME/Sentinel packages, and a 3-tab (`Overview`, `Processes`, `Storage`) Material 3 interface with `TelemetryRag` health indicators.
-- **Verification:** `3/3` unit tests (`testDebugUnitTest`), `lintVitalRelease`, and R8-minified signed `assembleRelease` verified (`0` errors), publishing `com.sentinel.monitor-<hash>.apk` to `artifacts/` and `H:/My Drive/Sentinel Monitor`.
+- **Verification:** `3/3` unit tests (`testDebugUnitTest`), `lintVitalRelease`, and R8-minified signed `assembleRelease` verified (`0` errors).
