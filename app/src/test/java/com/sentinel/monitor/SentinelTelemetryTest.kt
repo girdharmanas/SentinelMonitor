@@ -3,6 +3,7 @@ package com.sentinel.monitor
 import com.sentinel.monitor.data.model.CpuCoreSample
 import com.sentinel.monitor.data.model.InstalledProcessEntry
 import com.sentinel.monitor.data.model.MemorySweepReport
+import com.sentinel.monitor.data.model.SensorBlackboxEvent
 import com.sentinel.monitor.data.model.SentinelTab
 import com.sentinel.monitor.data.model.SystemSnapshot
 import com.sentinel.monitor.data.model.TelemetryFormatters
@@ -10,11 +11,16 @@ import com.sentinel.monitor.data.model.TelemetryRag
 import com.sentinel.monitor.data.model.VitalsHistoryPoint
 import com.sentinel.monitor.service.SentinelAutomationService
 import com.sentinel.monitor.util.AppInspectorEngine
+import com.sentinel.monitor.util.NetworkAndHardwareLabEngine
+import com.sentinel.monitor.util.ShizukuShellBridge
+import com.sentinel.monitor.util.StorageScavengerEngine
 import com.sentinel.monitor.util.SystemTelemetryEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 class SentinelTelemetryTest {
 
@@ -224,5 +230,118 @@ class SentinelTelemetryTest {
             ownPackage = "com.sentinel.monitor"
         )
         assertEquals("com.spotify.music", cacheTargets.first().packageName)
+    }
+
+    @Test
+    fun v2PowerSuiteEngines_deepSleepTrackersDuplicatesCableDnsAndShellGuard_workDeterministically() {
+        // 1. Kernel Deep-Sleep % calculation
+        val sleepSnap = SystemSnapshot(
+            uptimeMillis = 100_000L,
+            awakeMillis = 24_000L
+        )
+        assertEquals(76_000L, sleepSnap.deepSleepMillis)
+        assertEquals(76, sleepSnap.deepSleepPercent)
+
+        // 2. Sensor Blackbox JSON ring buffer & 60-event cap
+        val events = (1..75).map { idx ->
+            SensorBlackboxEvent(
+                timestampMs = idx * 1000L,
+                sensorType = if (idx % 2 == 0) "CAMERA" else "MIC",
+                durationMillis = 2400L
+            )
+        }
+        val decodedEvents = SensorBlackboxEvent.decodeList(SensorBlackboxEvent.encodeList(events, maxEvents = 60))
+        assertEquals(60, decodedEvents.size)
+        assertEquals(75_000L, decodedEvents.last().timestampMs)
+        assertEquals("MIC", decodedEvents.last().sensorType)
+
+        // 3. Embedded Tracker & Ad-SDK signature scanner
+        val trackers = AppInspectorEngine.detectEmbeddedTrackers(
+            listOf(
+                "com.example.app.MainActivity",
+                "com.google.android.gms.ads.AdActivity",
+                "com.google.firebase.analytics.connector.internal.AnalyticsConnectorRegistrar",
+                "com.facebook.appevents.AppEventsLogger",
+                "io.sentry.android.core.SentryInitProvider"
+            )
+        )
+        assertEquals(
+            listOf("Google AdMob", "Firebase Analytics", "Meta AppEvents", "Sentry Telemetry"),
+            trackers
+        )
+        assertTrue(AppInspectorEngine.detectEmbeddedTrackers(listOf("com.sentinel.monitor.MainActivity")).isEmpty())
+
+        // 4. Storage Scavenger exact SHA-256 duplicate finder (retaining oldest original, ignoring same-size non-matches)
+        val tmpDir = Files.createTempDirectory("sentinel_scavenger_test").toFile()
+        try {
+            val orig = File(tmpDir, "doc_v1.pdf").apply {
+                writeBytes("identical-payload-content-sentinel".toByteArray())
+                setLastModified(1_000_000L)
+            }
+            val copy = File(tmpDir, "doc_v1 (1).pdf").apply {
+                writeBytes("identical-payload-content-sentinel".toByteArray())
+                setLastModified(2_000_000L)
+            }
+            val diffSameLen = File(tmpDir, "other_same_len.pdf").apply {
+                writeBytes("different-payload-content-sentinel".toByteArray())
+                setLastModified(3_000_000L)
+            }
+            val dupes = StorageScavengerEngine.findDuplicateFilesBySizeAndHash(listOf(copy, orig, diffSameLen))
+            assertEquals(1, dupes.size)
+            assertEquals(copy.absolutePath, dupes.first().first.absolutePath)
+            assertEquals(orig.absolutePath, dupes.first().second.absolutePath)
+        } finally {
+            tmpDir.deleteRecursively()
+        }
+
+        // 5. USB-C Cable Grader & 3-Hop Network Fault Isolator + RFC 1035 DNS packet
+        val pdReport = NetworkAndHardwareLabEngine.gradeCableSamples(
+            isCharging = true,
+            voltagesMv = listOf(8950, 9010, 8980),
+            currentsMa = listOf(2800f, 2900f, 2850f),
+            wattsSamples = listOf(25.0f, 26.1f, 25.6f)
+        )
+        assertTrue(pdReport.gradeTitle.startsWith("Grade S"))
+        assertEquals(60, pdReport.voltageSwingMv)
+
+        val sagReport = NetworkAndHardwareLabEngine.gradeCableSamples(
+            isCharging = true,
+            voltagesMv = listOf(5100, 4620, 4700),
+            currentsMa = listOf(1500f, 1200f, 1300f),
+            wattsSamples = listOf(7.6f, 5.5f, 6.1f)
+        )
+        assertTrue(sagReport.gradeTitle.startsWith("Grade D"))
+
+        assertTrue(
+            NetworkAndHardwareLabEngine.classifyHopVerdict(
+                isOnline = true,
+                gatewayMs = 4,
+                ispMs = 14,
+                dnsMs = null,
+                fastestDnsLabel = null
+            ).startsWith("DNS Resolver Fault")
+        )
+        assertTrue(
+            NetworkAndHardwareLabEngine.classifyHopVerdict(
+                isOnline = true,
+                gatewayMs = 3,
+                ispMs = null,
+                dnsMs = null,
+                fastestDnsLabel = null
+            ).startsWith("ISP / WAN Outage")
+        )
+
+        val dnsPacket = NetworkAndHardwareLabEngine.buildDnsQueryPacket("example.com", txId = 0x534D)
+        assertEquals(29, dnsPacket.size)
+        assertEquals(0x53.toByte(), dnsPacket[0])
+        assertEquals(0x4D.toByte(), dnsPacket[1])
+
+        // 6. Shizuku shell identifier sanitization & new v2 deep-link routes
+        assertTrue(ShizukuShellBridge.isValidPackageIdentifier("com.sentinel.launcher"))
+        assertFalse(ShizukuShellBridge.isValidPackageIdentifier("com.bad; rm -rf /"))
+        assertEquals(SentinelTab.PROCESSES, SentinelTab.fromQueryParam("xray"))
+        assertEquals(SentinelTab.STORAGE, SentinelTab.fromQueryParam("scavenger"))
+        assertEquals(SentinelTab.SECURITY, SentinelTab.fromQueryParam("firewall"))
+        assertEquals(SentinelTab.WATCHDOG, SentinelTab.fromQueryParam("dns"))
     }
 }

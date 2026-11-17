@@ -8,11 +8,30 @@
 
 ## 📌 Active Task
 
-_No active task in progress._
+_None — All active tasks completed._
 
 ---
 
 ## 📋 Task History & Completed Work
+
+### `TASK-SENTINEL-MONITOR-V2-POWER-SUITE-008`: Deliver `Sentinel Monitor v2.0.0` Power Pack (Deep-Sleep, Cable Grader, Flight Recorder, Storage Scavenger, Tracker X-Ray, APK Vault, Firewall, Privacy Blackbox, Network/DNS & Hardware Lab)
+- **Status:** COMPLETED
+- **Started:** 2026-11-17 14:59
+- **Completed:** 2026-11-17 15:37
+- **Branch:** `main`
+- **Objective:** Implement the complete `v2.0.0` power suite alongside `Sentinel Launcher v1.7.0`:
+  1. Kernel Deep-Sleep %, 80% Charge Limit Alarm, USB-C Cable & Charger Grader, and Benchmark "Flight Recorder" Session Mode.
+  2. Deep Storage Scavenger (leftover `.apk`/`.apks`/`.xapk`/`.aab` installers, `>= 50 MB` large files, and SHA-256 duplicate finder).
+  3. Embedded Tracker & Ad-SDK Scanner (18 SDK signatures), 1-Tap APK Backup/Extractor Vault (`Downloads/Sentinel Backups`), Doze Exemption ("Battery Vampire") & `BOOT_COMPLETED` Auto-Start audits, Per-App 24h Wi-Fi/Cellular data usage, and optional privileged `<100ms` shell fast-path.
+  4. Camera & Microphone "Privacy Blackbox" event timeline (`CameraManager` + `AudioManager` callbacks) and Zero-Root Per-App Local Sinkhole Firewall (`SentinelFirewallVpnService`).
+  5. Wi-Fi Router vs. ISP 3-Hop Fault Isolator, DNS Speed Race, Widevine DRM (`L1`/`L3`) & Hardware `AV1`/`HEVC 10-bit`/`VP9` Codec Bench, Sensor/OLED & Multi-Touch Hz Lab, Hidden Android Shortcut Deck, Markdown Device Health Dossier, and `SentinelFocusSweepReceiver` + `sentinel://monitor?tab=processes&pkg=...` X-Ray deep-link.
+- **Architectural Improvements & Features Delivered:**
+  - **Services & Receivers (`CameraMicBlackboxTracker.kt`, `SentinelFirewallVpnService.kt`, `FlightRecorderManager.kt`, `SentinelFocusSweepReceiver.kt`, `SentinelWatchdogJobService.kt`)**: Zero-polling OS sensor blackbox, zero-CPU kernel-routed `addAllowedApplication` sinkhole VPN firewall, 2s coroutine Flight Recorder with Markdown export, Launcher Focus Space auto-sweep bridge, and 80% Charge Limit Watchdog alarm.
+  - **Scavenger, Network/Hardware Lab & Inspector Engines (`StorageScavengerEngine.kt`, `NetworkAndHardwareLabEngine.kt`, `ShizukuShellBridge.kt`, `AppInspectorEngine.kt`, `SystemTelemetryEngine.kt`)**: Size-first streaming SHA-256 duplicate detector, MediaStore `Downloads/Sentinel Backups` APK extractor, 3-hop latency + parallel RFC 1035 UDP DNS Speed Race, 6-sample USB-C rail sag & PD/PPS grader, `MediaDrm` Widevine + `MediaCodecList` hardware decoder audit, 18-SDK tracker signature scanner, `NetworkStatsManager` 24h per-UID Wi-Fi/Cellular usage, and Kernel Deep-Sleep % telemetry.
+  - **Upgraded 5-Tab Material 3 Dashboard (`VitalsTab.kt`, `ProcessesAndXRayTab.kt`, `StorageSecurityWatchdogTabs.kt`, `LabAndWatchdogTab.kt`, `SentinelApp.kt`, `MainActivity.kt`)**: Segmented sub-tabs across `Storage` (`App Caches` | `Storage Scavenger`), `Security` (`Audit` | `App Firewall` | `Sensor Log`), and `Lab` (`Hardware Lab` | `Net & DNS` | `Watchdog`), plus single-app X-Ray deep-link auto-sheet (`pkg=`).
+- **Verification:** `6/6` JUnit test suites (`SentinelTelemetryTest`), `lintVitalRelease` (`0` errors), R8 `assembleRelease`, and live `Pixel_9_Pro_XL` verification (`VITALS_CONTROL_CARD=True`, `VITALS_DEEP_SLEEP=True`, `STORAGE_SUB_TABS=True`, `SECURITY_SUB_TABS=True`, `LAB_CARDS=True`, `XRAY_SHEET_OPENED=True`, `CRASH_LOG_LEN=0`).
+
+---
 
 ### `TASK-DIRECT-CACHE-CLEAR-AND-PROCESS-STOPPER-007`: Direct In-App Cache Cleaner & 1-Tap Non-Essential Process Stopper (`v1.1.0`)
 - **Status:** COMPLETED

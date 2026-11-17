@@ -10,20 +10,26 @@ enum class SentinelTab(val routeKey: String, val label: String) {
     PROCESSES("processes", "Processes"),
     STORAGE("storage", "Storage"),
     SECURITY("security", "Security"),
-    WATCHDOG("watchdog", "Watchdog");
+    WATCHDOG("watchdog", "Lab");
 
     companion object {
         fun fromQueryParam(param: String?): SentinelTab {
             return when (param?.trim()?.lowercase(Locale.US)) {
-                "processes", "apps", "ram", "memory" -> PROCESSES
-                "storage", "cache", "disk" -> STORAGE
-                "security", "permissions", "audit" -> SECURITY
-                "watchdog", "alerts", "hud", "history" -> WATCHDOG
+                "processes", "apps", "ram", "memory", "xray" -> PROCESSES
+                "storage", "cache", "disk", "scavenger" -> STORAGE
+                "security", "permissions", "audit", "firewall", "blackbox" -> SECURITY
+                "watchdog", "alerts", "hud", "history", "lab", "ping", "dns", "cable", "benchmark" -> WATCHDOG
                 else -> VITALS
             }
         }
     }
 }
+
+data class SentinelDeepLinkRequest(
+    val tab: SentinelTab,
+    val inspectPackage: String? = null,
+    val requestNonce: Long = System.currentTimeMillis()
+)
 
 enum class TelemetryRag {
     HEALTHY,
@@ -105,6 +111,7 @@ data class SystemSnapshot(
     val androidVersionLabel: String = "Android",
     val primaryAbi: String = "arm64-v8a",
     val uptimeMillis: Long = 0L,
+    val awakeMillis: Long = 0L,
     val hasUsageStatsAccess: Boolean = false,
     val hasOverlayPermission: Boolean = false,
     val isShizukuInstalled: Boolean = false,
@@ -149,6 +156,16 @@ data class SystemSnapshot(
 
     val peakCpuMhz: Int
         get() = cpuCores.maxOfOrNull { it.curFreqMhz } ?: 0
+
+    val deepSleepMillis: Long
+        get() = (uptimeMillis - awakeMillis).coerceAtLeast(0L)
+
+    val deepSleepPercent: Int
+        get() = if (uptimeMillis > 0L) {
+            ((deepSleepMillis.toDouble() / uptimeMillis.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+        } else {
+            0
+        }
 }
 
 data class VitalsHistoryPoint(
@@ -199,6 +216,46 @@ data class VitalsHistoryPoint(
     }
 }
 
+data class SensorBlackboxEvent(
+    val timestampMs: Long,
+    val sensorType: String, // "CAMERA" or "MIC"
+    val durationMillis: Long
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("ts", timestampMs)
+        put("type", sensorType)
+        put("dur", durationMillis)
+    }
+
+    companion object {
+        fun decodeList(jsonStr: String): List<SensorBlackboxEvent> {
+            if (jsonStr.isBlank()) return emptyList()
+            return runCatching {
+                val arr = JSONArray(jsonStr)
+                buildList(arr.length()) {
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.optJSONObject(i) ?: continue
+                        add(
+                            SensorBlackboxEvent(
+                                timestampMs = obj.optLong("ts", 0L),
+                                sensorType = obj.optString("type", "MIC"),
+                                durationMillis = obj.optLong("dur", 0L)
+                            )
+                        )
+                    }
+                }
+            }.getOrDefault(emptyList())
+        }
+
+        fun encodeList(events: List<SensorBlackboxEvent>, maxEvents: Int = 60): String {
+            val trimmed = if (events.size > maxEvents) events.takeLast(maxEvents) else events
+            val arr = JSONArray()
+            for (ev in trimmed) arr.put(ev.toJson())
+            return arr.toString()
+        }
+    }
+}
+
 enum class SensitivePermBadge(val shortLabel: String, val riskCategory: String) {
     ACCESSIBILITY("Accessibility", "Full UI Control"),
     NOTIFICATION_LISTENER("Notif Listener", "Reads Notifications"),
@@ -226,12 +283,19 @@ data class InstalledProcessEntry(
     val appBytes: Long = 0L,
     val dataBytes: Long = 0L,
     val cacheBytes: Long = 0L,
+    val wifiDataBytes24h: Long = 0L,
+    val mobileDataBytes24h: Long = 0L,
+    val isIgnoringBatteryOptimizations: Boolean = false,
+    val isBootAutoStart: Boolean = false,
     val installerSourceLabel: String = "System",
     val isSideloaded: Boolean = false,
     val sensitivePermissions: List<SensitivePermBadge> = emptyList()
 ) {
     val totalStorageBytes: Long
         get() = appBytes + dataBytes + cacheBytes
+
+    val totalNetworkBytes24h: Long
+        get() = wifiDataBytes24h + mobileDataBytes24h
 
     val isLegacyTargetSdk: Boolean
         get() = !isSystemApp && targetSdk in 1..30
@@ -243,6 +307,7 @@ data class AppXRayDetails(
     val firstInstallTimeMs: Long,
     val lastUpdateTimeMs: Long,
     val nativeAbis: List<String>,
+    val detectedTrackers: List<String> = emptyList(),
     val sha1Fingerprint: String,
     val sha256Fingerprint: String,
     val sourceApkDir: String
@@ -257,20 +322,96 @@ data class ProcessExitSummary(
     val pssKb: Long
 )
 
+data class ScavengerFileItem(
+    val absolutePath: String,
+    val displayName: String,
+    val sizeBytes: Long,
+    val category: String, // "INSTALLER" | "LARGE_FILE" | "DUPLICATE"
+    val subtitle: String
+)
+
+data class CableGraderReport(
+    val isCharging: Boolean,
+    val avgWatts: Float,
+    val peakWatts: Float,
+    val avgCurrentMa: Float,
+    val voltageMinMv: Int,
+    val voltageMaxMv: Int,
+    val gradeTitle: String,
+    val verdict: String
+) {
+    val voltageSwingMv: Int
+        get() = (voltageMaxMv - voltageMinMv).coerceAtLeast(0)
+}
+
+data class FlightSessionReport(
+    val durationSec: Int,
+    val sampleCount: Int,
+    val avgCpuMhz: Int,
+    val peakCpuMhz: Int,
+    val avgRamPercent: Int,
+    val peakRamPercent: Int,
+    val startTempC: Float,
+    val peakTempC: Float,
+    val thermalThrottleHits: Int,
+    val avgPowerWatts: Float,
+    val estimatedMahUsed: Float
+) {
+    fun toMarkdown(deviceModel: String): String = buildString {
+        appendLine("## Sentinel Flight Recorder Session ($deviceModel)")
+        appendLine("- **Duration:** ${durationSec}s ($sampleCount samples)")
+        appendLine("- **CPU Clocks:** Avg $avgCpuMhz MHz • Peak $peakCpuMhz MHz")
+        appendLine("- **Memory Pressure:** Avg $avgRamPercent% • Peak $peakRamPercent%")
+        appendLine(String.format(Locale.US, "- **Thermal Envelope:** %.1f°C → Peak %.1f°C (%d throttle events)", startTempC, peakTempC, thermalThrottleHits))
+        appendLine(String.format(Locale.US, "- **Power Draw:** Avg %.2f W • Est. %.1f mAh", avgPowerWatts, estimatedMahUsed))
+    }
+}
+
+data class DnsRaceEntry(
+    val providerName: String,
+    val serverAddress: String,
+    val latencyMs: Int,
+    val isReachable: Boolean
+)
+
+data class HopDiagnosticReport(
+    val localIp: String,
+    val gatewayIp: String,
+    val dnsServers: List<String>,
+    val mtu: Int,
+    val privateDnsMode: String,
+    val gatewayLatencyMs: Int?,
+    val ispRawIpLatencyMs: Int?,
+    val dnsResolveLatencyMs: Int?,
+    val verdict: String,
+    val dnsRace: List<DnsRaceEntry>
+)
+
+data class CodecDrmProfile(
+    val widevineLevel: String,
+    val widevineVendor: String,
+    val hasHardwareAv1: Boolean,
+    val hasHardwareHevc10Bit: Boolean,
+    val hasHardwareVp9: Boolean,
+    val hardwareVideoDecoderCount: Int
+)
+
 data class MemorySweepReport(
     val sweptAppCount: Int,
     val skippedWhitelistedCount: Int = 0,
     val reclaimedRamBytes: Long,
     val availableBeforeBytes: Long,
-    val availableAfterBytes: Long
+    val availableAfterBytes: Long,
+    val usedShizukuShell: Boolean = false
 ) {
     fun summaryLabel(): String {
         val freedMb = reclaimedRamBytes.toDouble() / (1024.0 * 1024.0)
         val wlSuffix = if (skippedWhitelistedCount > 0) " ($skippedWhitelistedCount protected)" else ""
+        val modePrefix = if (usedShizukuShell) "[Shizuku] " else ""
         return if (freedMb >= 1.0) {
-            String.format(Locale.US, "Freed %.1f MB across %d apps%s", freedMb, sweptAppCount, wlSuffix)
+            String.format(Locale.US, "%sFreed %.1f MB across %d apps%s", modePrefix, freedMb, sweptAppCount, wlSuffix)
         } else {
-            "Swept $sweptAppCount cached apps$wlSuffix • Memory optimal"
+            "${modePrefix}Swept $sweptAppCount cached apps$wlSuffix • Memory optimal"
         }
     }
 }
@@ -308,7 +449,6 @@ object TelemetryFormatters {
     }
 
     fun normalizeBatteryCurrentToMilliamps(rawCurrentNow: Long): Float {
-        // Android BatteryManager reports µA on AOSP/Pixel, while certain OEMs report mA directly
         val absVal = abs(rawCurrentNow)
         return if (absVal > 15_000L) {
             rawCurrentNow / 1000f

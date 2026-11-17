@@ -437,6 +437,17 @@ fun VitalsTab(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    val deepSleepColor = if (snapshot.deepSleepPercent >= 55 || snapshot.isCharging || snapshot.uptimeMillis < 15 * 60_000L) {
+                        SentinelEmerald
+                    } else {
+                        SentinelAmber
+                    }
+                    Text(
+                        text = "Kernel Deep Sleep: ${snapshot.deepSleepPercent}% (${TelemetryFormatters.formatUptime(snapshot.deepSleepMillis)} suspended • ${TelemetryFormatters.formatUptime(snapshot.awakeMillis)} awake)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = deepSleepColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     if (!snapshot.hasUsageStatsAccess) {
                         Spacer(Modifier.height(4.dp))
                         Text(

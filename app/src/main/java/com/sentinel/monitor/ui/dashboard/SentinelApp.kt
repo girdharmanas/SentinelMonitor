@@ -17,9 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +52,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.sentinel.monitor.data.model.InstalledProcessEntry
 import com.sentinel.monitor.data.model.ProcessExitSummary
+import com.sentinel.monitor.data.model.SentinelDeepLinkRequest
 import com.sentinel.monitor.data.model.SentinelTab
 import com.sentinel.monitor.data.model.SystemSnapshot
 import com.sentinel.monitor.data.model.VitalsHistoryPoint
@@ -74,7 +75,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
+fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -83,9 +84,10 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
         .collectAsState(initial = SentinelSettings())
     val isMiniHudRunning by MiniHudOverlayService.isRunningFlow.collectAsState()
     val automationProgress by SentinelAutomationService.progressFlow.collectAsState()
-    val requestedTab by deepLinkTabFlow.collectAsState()
+    val deepLinkReq by deepLinkRequestFlow.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(SentinelTab.VITALS) }
+    var pendingInspectPackage by rememberSaveable { mutableStateOf<String?>(null) }
     var isLivePolling by rememberSaveable { mutableStateOf(true) }
     var snapshot by remember { mutableStateOf(SystemSnapshot()) }
     var processes by remember { mutableStateOf<List<InstalledProcessEntry>>(emptyList()) }
@@ -94,7 +96,6 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
     var sweepBanner by remember { mutableStateOf<String?>(null) }
     var watchdogBanner by remember { mutableStateOf<String?>(null) }
 
-    // Automation setup bottom sheet state (shown when Accessibility isn't enabled yet)
     var pendingSetupPromptTitle by remember { mutableStateOf<String?>(null) }
     var pendingSetupAllowCacheDialog by remember { mutableStateOf(false) }
 
@@ -125,13 +126,14 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
     val liveRamSparkline = remember { mutableStateListOf<Float>() }
     val liveCpuSparkline = remember { mutableStateListOf<Float>() }
 
-    LaunchedEffect(requestedTab) {
-        if (requestedTab != null) {
-            selectedTab = requestedTab!!
+    LaunchedEffect(deepLinkReq) {
+        val req = deepLinkReq ?: return@LaunchedEffect
+        selectedTab = req.tab
+        if (!req.inspectPackage.isNullOrBlank()) {
+            pendingInspectPackage = req.inspectPackage
         }
     }
 
-    // Refresh process & storage catalog automatically when an automation batch completes
     LaunchedEffect(automationProgress.isRunning, automationProgress.lastSummaryBanner) {
         if (!automationProgress.isRunning && automationProgress.lastSummaryBanner != null) {
             snapshot = SystemTelemetryEngine.sampleSnapshot(context)
@@ -333,8 +335,8 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
                 NavigationBarItem(
                     selected = selectedTab == SentinelTab.WATCHDOG,
                     onClick = { selectedTab = SentinelTab.WATCHDOG },
-                    icon = { Icon(Icons.Default.NotificationsActive, contentDescription = null) },
-                    label = { Text("Watchdog") }
+                    icon = { Icon(Icons.Default.Science, contentDescription = null) },
+                    label = { Text("Lab") }
                 )
             }
         }
@@ -389,6 +391,8 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
                 protectedPackages = settings.protectedPackages,
                 automationProgress = automationProgress,
                 hasUsageAccess = snapshot.hasUsageStatsAccess,
+                deepLinkInspectPackage = pendingInspectPackage,
+                onConsumeDeepLinkPackage = { pendingInspectPackage = null },
                 onToggleProtected = { pkg ->
                     scope.launch { SentinelPreferencesRepository.toggleProtectedPackage(context, pkg) }
                 },
@@ -427,10 +431,21 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
             )
             SentinelTab.SECURITY -> SecurityTab(
                 processes = processes,
+                firewallBlockedPackages = settings.firewallBlockedPackages,
+                sensorBlackboxLog = settings.sensorBlackboxLog,
+                onToggleFirewallPackage = { pkg ->
+                    scope.launch { SentinelPreferencesRepository.toggleFirewallBlockedPackage(context, pkg) }
+                },
+                onClearSensorBlackbox = {
+                    scope.launch { SentinelPreferencesRepository.clearSensorBlackboxLog(context) }
+                },
                 onOpenAppDetails = openAppDetails,
                 modifier = Modifier.padding(innerPadding)
             )
-            SentinelTab.WATCHDOG -> WatchdogTab(
+            SentinelTab.WATCHDOG -> LabAndWatchdogTab(
+                snapshot = snapshot,
+                processes = processes,
+                nonEssentialCount = nonEssentialRunning.size,
                 settings = settings,
                 isMiniHudRunning = isMiniHudRunning,
                 auditBanner = watchdogBanner,
@@ -438,6 +453,11 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
                     scope.launch {
                         SentinelPreferencesRepository.setWatchdogEnabled(context, enabled)
                         SentinelWatchdogJobService.scheduleOrCancel(context, enabled)
+                    }
+                },
+                onToggleChargeLimitAlarm = { enabled, limitPct ->
+                    scope.launch {
+                        SentinelPreferencesRepository.setChargeLimitAlarm(context, enabled, limitPct)
                     }
                 },
                 onUpdateThresholds = { therm, stor, drain ->

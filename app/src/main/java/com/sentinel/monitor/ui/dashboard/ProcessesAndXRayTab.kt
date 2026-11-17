@@ -25,11 +25,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.StopCircle
@@ -53,6 +55,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -77,11 +80,15 @@ import com.sentinel.monitor.ui.theme.SentinelEmerald
 import com.sentinel.monitor.ui.theme.SentinelSurface
 import com.sentinel.monitor.ui.theme.SentinelSurfaceHigh
 import com.sentinel.monitor.util.AppInspectorEngine
+import com.sentinel.monitor.util.StorageScavengerEngine
+import kotlinx.coroutines.launch
 
 private enum class ProcessFilterMode(val label: String) {
     RUNNING_NON_ESSENTIAL("Running Non-Essential"),
     CULPRITS_24H("24h Active"),
     USER_APPS("User Apps"),
+    DOZE_VAMPIRES("Doze Exempt"),
+    BOOT_STARTERS("Boot Auto-Start"),
     WHITELISTED("Protected"),
     SYSTEM("System"),
     EXIT_LOG("Exit / Crash Log")
@@ -96,6 +103,8 @@ fun ProcessesTab(
     protectedPackages: Set<String>,
     automationProgress: AutomationProgress,
     hasUsageAccess: Boolean,
+    deepLinkInspectPackage: String? = null,
+    onConsumeDeepLinkPackage: () -> Unit = {},
     onToggleProtected: (String) -> Unit,
     onStopAllNonEssential: () -> Unit,
     onForceStopSingleApp: (InstalledProcessEntry) -> Unit,
@@ -108,10 +117,23 @@ fun ProcessesTab(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
     var filterMode by rememberSaveable { mutableStateOf(ProcessFilterMode.RUNNING_NON_ESSENTIAL) }
     var inspectedEntry by remember { mutableStateOf<InstalledProcessEntry?>(null) }
     var xrayDetails by remember { mutableStateOf<AppXRayDetails?>(null) }
+    var isBackingUpApk by remember { mutableStateOf(false) }
+
+    LaunchedEffect(deepLinkInspectPackage, processes) {
+        val targetPkg = deepLinkInspectPackage ?: return@LaunchedEffect
+        if (processes.isNotEmpty()) {
+            val found = processes.firstOrNull { it.packageName == targetPkg }
+            if (found != null) {
+                inspectedEntry = found
+            }
+            onConsumeDeepLinkPackage()
+        }
+    }
 
     LaunchedEffect(inspectedEntry) {
         val target = inspectedEntry
@@ -127,6 +149,8 @@ fun ProcessesTab(
             ProcessFilterMode.RUNNING_NON_ESSENTIAL -> nonEssentialRunning
             ProcessFilterMode.CULPRITS_24H -> processes.filter { it.totalForegroundMillis24h > 0L || it.isRecentlyActive }
             ProcessFilterMode.USER_APPS -> processes.filter { !it.isSystemApp }
+            ProcessFilterMode.DOZE_VAMPIRES -> processes.filter { !it.isSystemApp && it.isIgnoringBatteryOptimizations }
+            ProcessFilterMode.BOOT_STARTERS -> processes.filter { !it.isSystemApp && it.isBootAutoStart }
             ProcessFilterMode.WHITELISTED -> processes.filter { it.packageName in protectedPackages }
             ProcessFilterMode.SYSTEM -> processes.filter { it.isSystemApp }
             ProcessFilterMode.EXIT_LOG -> emptyList()
@@ -155,7 +179,7 @@ fun ProcessesTab(
             value = query,
             onValueChange = { query = it },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            placeholder = { Text("Search apps, packages, or culprits…") },
+            placeholder = { Text("Search apps, packages, trackers, or culprits…") },
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier
@@ -171,10 +195,13 @@ fun ProcessesTab(
                 .padding(vertical = 8.dp)
         ) {
             ProcessFilterMode.entries.forEach { mode ->
-                val countBadge = if (mode == ProcessFilterMode.RUNNING_NON_ESSENTIAL) {
-                    " (${nonEssentialRunning.size})"
-                } else {
-                    ""
+                val countBadge = when (mode) {
+                    ProcessFilterMode.RUNNING_NON_ESSENTIAL -> " (${nonEssentialRunning.size})"
+                    ProcessFilterMode.DOZE_VAMPIRES -> {
+                        val n = processes.count { !it.isSystemApp && it.isIgnoringBatteryOptimizations }
+                        if (n > 0) " ($n)" else ""
+                    }
+                    else -> ""
                 }
                 FilterChip(
                     selected = filterMode == mode,
@@ -184,7 +211,6 @@ fun ProcessesTab(
             }
         }
 
-        // Direct 1-Tap Stop Non-Essential Processes Bar
         if (filterMode != ProcessFilterMode.EXIT_LOG) {
             Card(
                 shape = RoundedCornerShape(18.dp),
@@ -204,7 +230,7 @@ fun ProcessesTab(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Tap Shield on any app below to protect it from sweeps.",
+                            text = "Tap any row for Tracker SDK X-Ray & 1-tap APK Backup.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -226,7 +252,7 @@ fun ProcessesTab(
 
         if (!hasUsageAccess && filterMode != ProcessFilterMode.EXIT_LOG) {
             Text(
-                text = "Enable Usage Access for 24h CPU foreground duration, Standby Buckets & Cache sizes →",
+                text = "Enable Usage Access for 24h CPU foreground, Network Data, Standby Buckets & Cache sizes →",
                 style = MaterialTheme.typography.labelSmall,
                 color = SentinelEmerald,
                 modifier = Modifier
@@ -278,19 +304,21 @@ fun ProcessesTab(
                                 )
                                 val fgMin = item.totalForegroundMillis24h / 60_000L
                                 val metaParts = buildList {
-                                    if (fgMin > 0L) add("${fgMin}m active (24h)")
+                                    if (fgMin > 0L) add("${fgMin}m active")
                                     if (item.totalStorageBytes > 0L) {
                                         add(TelemetryFormatters.formatBytes(item.totalStorageBytes))
                                     }
-                                    if (item.cacheBytes >= 1024 * 1024L) {
-                                        add("${TelemetryFormatters.formatBytes(item.cacheBytes)} cache")
+                                    if (item.totalNetworkBytes24h >= 64 * 1024L) {
+                                        add("Net ${TelemetryFormatters.formatBytes(item.totalNetworkBytes24h)}")
                                     }
+                                    if (item.isIgnoringBatteryOptimizations) add("Doze Exempt")
+                                    if (item.isBootAutoStart && !item.isSystemApp) add("Boot")
                                     add("SDK ${item.targetSdk}")
                                 }
                                 Text(
                                     text = metaParts.joinToString(" • "),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = SentinelEmerald
+                                    color = if (item.isIgnoringBatteryOptimizations) SentinelAmber else SentinelEmerald
                                 )
                             }
                             if (!item.isStopped && !item.isSystemApp && item.packageName != context.packageName) {
@@ -326,7 +354,22 @@ fun ProcessesTab(
                 entry = target,
                 xray = xrayDetails,
                 isProtected = target.packageName in protectedPackages,
+                isBackingUpApk = isBackingUpApk,
                 onToggleProtected = { onToggleProtected(target.packageName) },
+                onBackupApk = {
+                    if (!isBackingUpApk) {
+                        isBackingUpApk = true
+                        scope.launch {
+                            val res = StorageScavengerEngine.exportInstalledApkToDownloads(context, target)
+                            isBackingUpApk = false
+                            val msg = res.fold(
+                                onSuccess = { path -> "✓ Backed up APK to $path" },
+                                onFailure = { err -> "APK backup failed: ${err.message}" }
+                            )
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
                 onForceStop = {
                     inspectedEntry = null
                     onForceStopSingleApp(target)
@@ -441,7 +484,9 @@ private fun AppXRayBottomSheetContent(
     entry: InstalledProcessEntry,
     xray: AppXRayDetails?,
     isProtected: Boolean,
+    isBackingUpApk: Boolean,
     onToggleProtected: () -> Unit,
+    onBackupApk: () -> Unit,
     onForceStop: () -> Unit,
     onClearCache: () -> Unit,
     onOpenAppInfo: () -> Unit,
@@ -451,6 +496,7 @@ private fun AppXRayBottomSheetContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -476,7 +522,7 @@ private fun AppXRayBottomSheetContent(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "Binary & Storage X-Ray",
+                    text = "Binary, Storage & Power X-Ray",
                     style = MaterialTheme.typography.labelLarge,
                     color = SentinelCyan,
                     fontWeight = FontWeight.Bold
@@ -494,10 +540,73 @@ private fun AppXRayBottomSheetContent(
                     style = MaterialTheme.typography.bodySmall,
                     color = SentinelEmerald
                 )
+                Text(
+                    text = "24h Data: Wi-Fi ${TelemetryFormatters.formatBytes(entry.wifiDataBytes24h)} • Cellular ${TelemetryFormatters.formatBytes(entry.mobileDataBytes24h)} • Doze: ${if (entry.isIgnoringBatteryOptimizations) "EXEMPT (Unrestricted)" else "Optimized"} • Boot: ${if (entry.isBootAutoStart) "Auto-Start" else "None"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (entry.isIgnoringBatteryOptimizations) SentinelAmber else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
-        // Direct 1-Tap Force Stop & Clear Cache Row for this App
+        // Embedded Ad & Tracker SDK Scanner
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = SentinelSurfaceHigh,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val trackers = xray?.detectedTrackers
+                Text(
+                    text = "Embedded Tracker & Ad-SDK Scanner",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (trackers.isNullOrEmpty()) SentinelEmerald else SentinelAmber,
+                    fontWeight = FontWeight.Bold
+                )
+                when {
+                    trackers == null -> {
+                        Text(
+                            text = "Scanning manifest activities, services, receivers & providers…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    trackers.isEmpty() -> {
+                        Text(
+                            text = "✓ Zero known Ad / Analytics / Attribution SDK signatures detected",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SentinelEmerald
+                        )
+                    }
+                    else -> {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            trackers.forEach { sdk ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(SentinelAmber.copy(alpha = 0.18f))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = sdk,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = SentinelAmber,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Direct 1-Tap Force Stop & Clear Cache Row
         if (entry.packageName != context.packageName) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -559,11 +668,28 @@ private fun AppXRayBottomSheetContent(
             FingerprintCopyRow(context = context, label = "SHA-256", value = xray.sha256Fingerprint)
         }
 
+        // APK Backup Vault Button
+        OutlinedButton(
+            onClick = onBackupApk,
+            enabled = !isBackingUpApk,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Default.Download,
+                contentDescription = null,
+                tint = SentinelCyan,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(if (isBackingUpApk) "Extracting APK…" else "Backup Base APK to Downloads/Sentinel Backups")
+        }
+
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp, bottom = 18.dp)
+                .padding(top = 2.dp, bottom = 18.dp)
         ) {
             OutlinedButton(
                 onClick = onToggleProtected,

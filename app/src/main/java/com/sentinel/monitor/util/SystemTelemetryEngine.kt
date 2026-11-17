@@ -280,6 +280,7 @@ object SystemTelemetryEngine {
             androidVersionLabel = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
             primaryAbi = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a",
             uptimeMillis = SystemClock.elapsedRealtime(),
+            awakeMillis = SystemClock.uptimeMillis(),
             hasUsageStatsAccess = hasUsageStatsPermission(appCtx),
             hasOverlayPermission = Settings.canDrawOverlays(appCtx),
             isShizukuInstalled = isShizukuInstalled,
@@ -359,6 +360,7 @@ object SystemTelemetryEngine {
 
         var sweptCount = 0
         var skippedWhitelist = 0
+        var usedShell = false
         for (app in installed) {
             val pkg = app.packageName ?: continue
             val isStopped = (app.flags and ApplicationInfo.FLAG_STOPPED) != 0
@@ -369,7 +371,11 @@ object SystemTelemetryEngine {
             }
             if (shouldProtectPackageFromSweep(pkg, dynamicProtected)) continue
             runCatching {
-                activityManager.killBackgroundProcesses(pkg)
+                if (ShizukuShellBridge.tryShellForceStop(pkg)) {
+                    usedShell = true
+                } else {
+                    activityManager.killBackgroundProcesses(pkg)
+                }
                 sweptCount++
             }
         }
@@ -384,7 +390,8 @@ object SystemTelemetryEngine {
             skippedWhitelistedCount = skippedWhitelist,
             reclaimedRamBytes = reclaimed,
             availableBeforeBytes = beforeMem.availMem,
-            availableAfterBytes = afterMem.availMem
+            availableAfterBytes = afterMem.availMem,
+            usedShizukuShell = usedShell
         )
     }
 

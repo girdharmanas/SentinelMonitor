@@ -14,6 +14,7 @@ import com.sentinel.monitor.MainActivity
 import com.sentinel.monitor.data.model.InstalledProcessEntry
 import com.sentinel.monitor.data.model.TelemetryFormatters
 import com.sentinel.monitor.util.AppInspectorEngine
+import com.sentinel.monitor.util.ShizukuShellBridge
 import com.sentinel.monitor.util.SystemTelemetryEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -268,6 +269,9 @@ class SentinelAutomationService : AccessibilityService() {
 
     private suspend fun executeSingleForceStop(packageName: String): Boolean {
         if (isPackageStopped(packageName)) return true
+        if (ShizukuShellBridge.tryShellForceStop(packageName) && isPackageStopped(packageName)) {
+            return true
+        }
 
         openAppDetailsScreen(packageName)
         var clickedForceStop = false

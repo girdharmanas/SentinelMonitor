@@ -3,13 +3,18 @@ package com.sentinel.monitor.util
 import android.Manifest
 import android.app.ActivityManager
 import android.app.AppOpsManager
+import android.app.usage.NetworkStats
+import android.app.usage.NetworkStatsManager
 import android.app.usage.StorageStatsManager
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
 import android.os.Build
+import android.os.PowerManager
 import android.os.Process
 import android.os.storage.StorageManager
 import android.provider.Settings
@@ -64,6 +69,13 @@ object AppInspectorEngine {
         }
 
         val appOps = appCtx.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
+        val powerManager = appCtx.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val bootAutoStartPkgs = queryBootCompletedPackages(pm)
+        val (wifiByUid, mobileByUid) = if (hasUsage) {
+            queryNetworkBytesByUid24h(appCtx, now - 86_400_000L, now)
+        } else {
+            emptyMap<Int, Long>() to emptyMap<Int, Long>()
+        }
 
         pkgInfos.mapNotNull { pkgInfo ->
             val appInfo = pkgInfo.applicationInfo ?: return@mapNotNull null
@@ -111,6 +123,10 @@ object AppInspectorEngine {
                 enabledNotifListeners = enabledNotifListenerPkgs
             )
 
+            val ignoringDoze = !isSystem && runCatching {
+                powerManager?.isIgnoringBatteryOptimizations(pkg) == true
+            }.getOrDefault(false)
+
             InstalledProcessEntry(
                 packageName = pkg,
                 appLabel = label,
@@ -127,6 +143,10 @@ object AppInspectorEngine {
                 appBytes = appBytes,
                 dataBytes = dataBytes,
                 cacheBytes = cacheBytes,
+                wifiDataBytes24h = wifiByUid[appInfo.uid] ?: 0L,
+                mobileDataBytes24h = mobileByUid[appInfo.uid] ?: 0L,
+                isIgnoringBatteryOptimizations = ignoringDoze,
+                isBootAutoStart = pkg in bootAutoStartPkgs,
                 installerSourceLabel = installerLabel,
                 isSideloaded = isSideloaded,
                 sensitivePermissions = badges
@@ -271,23 +291,122 @@ object AppInspectorEngine {
         return badges
     }
 
+    private fun queryBootCompletedPackages(pm: PackageManager): Set<String> {
+        return runCatching {
+            val bootIntent = Intent(Intent.ACTION_BOOT_COMPLETED)
+            val receivers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.queryBroadcastReceivers(bootIntent, PackageManager.ResolveInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.queryBroadcastReceivers(bootIntent, 0)
+            }
+            receivers.mapNotNull { it.activityInfo?.packageName }.toSet()
+        }.getOrDefault(emptySet())
+    }
+
+    @Suppress("DEPRECATION")
+    private fun queryNetworkBytesByUid24h(
+        context: Context,
+        startMs: Long,
+        endMs: Long
+    ): Pair<Map<Int, Long>, Map<Int, Long>> {
+        val nsm = context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
+            ?: return emptyMap<Int, Long>() to emptyMap<Int, Long>()
+
+        fun aggregateTransport(netType: Int): Map<Int, Long> {
+            val map = HashMap<Int, Long>()
+            runCatching {
+                val stats = nsm.querySummary(netType, null, startMs, endMs) ?: return@runCatching
+                try {
+                    val bucket = NetworkStats.Bucket()
+                    while (stats.hasNextBucket()) {
+                        stats.getNextBucket(bucket)
+                        val total = (bucket.rxBytes + bucket.txBytes).coerceAtLeast(0L)
+                        if (total > 0L) {
+                            map[bucket.uid] = (map[bucket.uid] ?: 0L) + total
+                        }
+                    }
+                } finally {
+                    runCatching { stats.close() }
+                }
+            }
+            return map
+        }
+
+        return aggregateTransport(ConnectivityManager.TYPE_WIFI) to
+            aggregateTransport(ConnectivityManager.TYPE_MOBILE)
+    }
+
+    private val TRACKER_SDK_SIGNATURES: List<Pair<String, List<String>>> = listOf(
+        "Google AdMob" to listOf("com.google.android.gms.ads."),
+        "Firebase Analytics" to listOf("com.google.android.gms.measurement.", "com.google.firebase.analytics."),
+        "Meta AppEvents" to listOf("com.facebook.appevents.", "com.facebook.ads.", "com.facebook.CustomTab"),
+        "Unity Ads" to listOf("com.unity3d.services.ads.", "com.unity3d.ads."),
+        "AppLovin MAX" to listOf("com.applovin."),
+        "Adjust Attribution" to listOf("com.adjust.sdk."),
+        "AppsFlyer" to listOf("com.appsflyer."),
+        "Branch.io" to listOf("io.branch."),
+        "ironSource" to listOf("com.ironsource."),
+        "Vungle / Liftoff" to listOf("com.vungle."),
+        "InMobi" to listOf("com.inmobi."),
+        "Chartboost" to listOf("com.chartboost."),
+        "OneSignal Push" to listOf("com.onesignal."),
+        "Braze" to listOf("com.braze.", "com.appboy."),
+        "Amplitude" to listOf("com.amplitude."),
+        "Mixpanel" to listOf("com.mixpanel."),
+        "Segment" to listOf("com.segment.analytics."),
+        "Sentry Telemetry" to listOf("io.sentry.")
+    )
+
+    internal fun detectEmbeddedTrackers(componentClassNames: Iterable<String>): List<String> {
+        val found = LinkedHashSet<String>()
+        for (cls in componentClassNames) {
+            for ((sdkName, prefixes) in TRACKER_SDK_SIGNATURES) {
+                if (prefixes.any { pfx -> cls.startsWith(pfx, ignoreCase = true) }) {
+                    found.add(sdkName)
+                }
+            }
+        }
+        return found.toList()
+    }
+
     suspend fun inspectAppXRay(context: Context, entry: InstalledProcessEntry): AppXRayDetails =
         withContext(Dispatchers.IO) {
             val pm = context.applicationContext.packageManager
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val certFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 PackageManager.GET_SIGNING_CERTIFICATES
             } else {
                 @Suppress("DEPRECATION")
                 PackageManager.GET_SIGNATURES
             }
+            val compFlags = certFlags or
+                PackageManager.GET_ACTIVITIES or
+                PackageManager.GET_SERVICES or
+                PackageManager.GET_RECEIVERS or
+                PackageManager.GET_PROVIDERS
             val pkgInfo = runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    pm.getPackageInfo(entry.packageName, PackageManager.PackageInfoFlags.of(flags.toLong()))
+                    pm.getPackageInfo(entry.packageName, PackageManager.PackageInfoFlags.of(compFlags.toLong()))
                 } else {
                     @Suppress("DEPRECATION")
-                    pm.getPackageInfo(entry.packageName, flags)
+                    pm.getPackageInfo(entry.packageName, compFlags)
+                }
+            }.getOrNull() ?: runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getPackageInfo(entry.packageName, PackageManager.PackageInfoFlags.of(certFlags.toLong()))
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageInfo(entry.packageName, certFlags)
                 }
             }.getOrNull()
+
+            val componentNames = buildList {
+                pkgInfo?.activities?.forEach { it.name?.let(::add) }
+                pkgInfo?.services?.forEach { it.name?.let(::add) }
+                pkgInfo?.receivers?.forEach { it.name?.let(::add) }
+                pkgInfo?.providers?.forEach { it.name?.let(::add) }
+            }
+            val trackers = detectEmbeddedTrackers(componentNames)
 
             val certBytes = runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -317,6 +436,7 @@ object AppInspectorEngine {
                 firstInstallTimeMs = pkgInfo?.firstInstallTime ?: 0L,
                 lastUpdateTimeMs = pkgInfo?.lastUpdateTime ?: 0L,
                 nativeAbis = abis.ifEmpty { listOf("Pure JVM / DEX (Universal)") },
+                detectedTrackers = trackers,
                 sha1Fingerprint = sha1,
                 sha256Fingerprint = sha256,
                 sourceApkDir = srcDir

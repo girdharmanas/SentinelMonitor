@@ -99,7 +99,17 @@ class SentinelWatchdogJobService : JobService() {
                 alerts.add("Low Storage Alert: Only $freePct% free on /data partition")
             }
 
-            // 3. Abnormal battery discharge rate check
+            // 3. Battery Longevity Charge Limit Alarm (e.g. 80% ceiling)
+            if (settings.chargeLimitAlarmEnabled &&
+                snap.isCharging &&
+                snap.batteryPercent >= settings.chargeLimitPercent
+            ) {
+                alerts.add(
+                    "Charge Limit Reached: ${snap.batteryPercent}% (target ${settings.chargeLimitPercent}% — unplug to preserve battery health)"
+                )
+            }
+
+            // 4. Abnormal battery discharge rate check
             if (!snap.isCharging && prevPoint != null) {
                 val dtHours = (point.timestampMs - prevPoint.timestampMs) / 3_600_000.0
                 val dropPct = prevPoint.batteryPercent - point.batteryPercent
