@@ -14,6 +14,17 @@ _None — All active tasks completed._
 
 ## 📋 Task History & Completed Work
 
+### `TASK-WHATS-NEW-RELEASE-NOTES-009`: Add In-App What's New & Versioned Release Notes Hub (`v2.0.1`)
+- **Status:** COMPLETED
+- **Started:** 2026-11-17 15:54
+- **Completed:** 2026-11-17 15:58
+- **Branch:** `main`
+- **Objective:** Achieve 3-app Sentinel Suite parity by adding an in-app **What's New / Release Notes** sheet to Sentinel Monitor (`ReleaseNotes.kt` + `ReleaseNotesBottomSheet.kt`), auto-presenting once per version upgrade (`lastSeenReleaseVersion` in DataStore) and accessible anytime via the TopAppBar sparkles icon and Vitals footer.
+- **Touched Files:** `ReleaseNotes.kt`, `ReleaseNotesBottomSheet.kt`, `SentinelPreferences.kt`, `SentinelApp.kt`, `VitalsTab.kt`, `SentinelTelemetryTest.kt`, `app/build.gradle.kts` (`v2.0.1` / `versionCode = 8`), `README.md`, `TASK_LOG.md`.
+- **Verification:** `6/6` JUnit test suites (`SentinelTelemetryTest`), `lintVitalRelease` (`0` errors), and R8 `assembleRelease` verified & published to `H:/My Drive/Sentinel/Monitor`.
+
+---
+
 ### `TASK-SENTINEL-MONITOR-V2-POWER-SUITE-008`: Deliver `Sentinel Monitor v2.0.0` Power Pack (Deep-Sleep, Cable Grader, Flight Recorder, Storage Scavenger, Tracker X-Ray, APK Vault, Firewall, Privacy Blackbox, Network/DNS & Hardware Lab)
 - **Status:** COMPLETED
 - **Started:** 2026-11-17 14:59

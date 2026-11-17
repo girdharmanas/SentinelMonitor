@@ -1,8 +1,8 @@
-# Sentinel Monitor (`com.sentinel.monitor`) — `v2.0.0`
+# Sentinel Monitor (`com.sentinel.monitor`) — `v2.0.1`
 
 Flagship Android System Process, Hardware Telemetry, Storage Scavenger, Network/DNS Lab & Zero-Root Firewall Task Manager in the **Sentinel Suite** (`Sentinel Monitor`, `Sentinel Launcher`, `Sentinel Reader`).
 
-## Core Capabilities (`v2.0.0`)
+## Core Capabilities (`v2.0.1`)
 - **Vitals, Deep-Sleep & Direct 1-Tap Control:** Per-core CPU MHz & governor clusters, physical RAM + ZRAM/Swap + Kernel Cache, signed Battery Wattage (`+W`/`-W`) & `PowerManager` thermal throttling, **Kernel Deep-Sleep %** (`elapsedRealtime - uptimeMillis`), live `↑/↓` network throughput, LTPO Display `Hz`, and 1-tap automated **Stop Non-Essential Apps** & **Clear App Caches** (with optional `<100ms` privileged shell fast-path).
 - **Process Culprits, Tracker X-Ray & APK Vault:** 24h foreground CPU & Wi-Fi/Cellular data attribution, Doze-Exempt ("Battery Vampire") & `BOOT_COMPLETED` Auto-Start filters, Kernel/JVM Exit & OOM log, Protected Whitelist, **18-SDK Embedded Ad/Tracker Scanner**, **1-Tap Base APK Backup Vault** (`Downloads/Sentinel Backups`), and `sentinel://monitor?tab=processes&pkg=<pkg>` single-app X-Ray deep-link.
 - **Storage Cache Cleaner & Deep Storage Scavenger:** Exact `StorageStatsManager` per-app cache cleaner + **Storage Scavenger** scanning leftover `.apk`/`.apks`/`.xapk` installers (with installed-version check), `>= 50 MB` space hogs, and **exact SHA-256 duplicate files** (preserving oldest originals).

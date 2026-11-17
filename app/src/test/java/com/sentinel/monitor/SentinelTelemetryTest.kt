@@ -4,6 +4,7 @@ import com.sentinel.monitor.data.model.CpuCoreSample
 import com.sentinel.monitor.data.model.InstalledProcessEntry
 import com.sentinel.monitor.data.model.MemorySweepReport
 import com.sentinel.monitor.data.model.SensorBlackboxEvent
+import com.sentinel.monitor.data.model.SentinelReleaseNotes
 import com.sentinel.monitor.data.model.SentinelTab
 import com.sentinel.monitor.data.model.SystemSnapshot
 import com.sentinel.monitor.data.model.TelemetryFormatters
@@ -343,5 +344,13 @@ class SentinelTelemetryTest {
         assertEquals(SentinelTab.STORAGE, SentinelTab.fromQueryParam("scavenger"))
         assertEquals(SentinelTab.SECURITY, SentinelTab.fromQueryParam("firewall"))
         assertEquals(SentinelTab.WATCHDOG, SentinelTab.fromQueryParam("dns"))
+
+        // 7. Sentinel Release Notes integrity check
+        val releases = SentinelReleaseNotes.RELEASES
+        assertTrue(releases.size >= 4)
+        assertEquals(SentinelReleaseNotes.CURRENT_VERSION, releases.first().version)
+        assertTrue(releases.first().isLatest)
+        assertEquals(releases.size, releases.map { it.version }.toSet().size)
+        assertTrue(releases.all { r -> r.highlights.isNotEmpty() && r.highlights.all { h -> h.title.isNotBlank() && h.description.isNotBlank() } })
     }
 }

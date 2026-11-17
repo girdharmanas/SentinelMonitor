@@ -78,6 +78,7 @@ fun VitalsTab(
     onDismissAutomationBanner: () -> Unit,
     onToggleMiniHud: () -> Unit,
     onOpenUsageAccess: () -> Unit,
+    onOpenReleaseNotes: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val ramRag = TelemetryRag.fromUsageFraction(snapshot.ramUsageFraction)
@@ -456,6 +457,14 @@ fun VitalsTab(
                             color = SentinelEmerald,
                             modifier = Modifier.clickable { onOpenUsageAccess() }
                         )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedButton(
+                        onClick = onOpenReleaseNotes,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("What's New & Release History")
                     }
                 }
             }

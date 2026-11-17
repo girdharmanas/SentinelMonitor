@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.map
 val Context.sentinelDataStore: DataStore<Preferences> by preferencesDataStore(name = "sentinel_monitor_prefs")
 
 data class SentinelSettings(
+    val isLoaded: Boolean = false,
+    val lastSeenReleaseVersion: String = "",
     val protectedPackages: Set<String> = emptySet(),
     val firewallBlockedPackages: Set<String> = emptySet(),
     val watchdogEnabled: Boolean = true,
@@ -34,6 +36,7 @@ data class SentinelSettings(
 )
 
 object SentinelPreferencesRepository {
+    private val KEY_LAST_SEEN_RELEASE_VERSION = stringPreferencesKey("last_seen_release_version")
     private val KEY_PROTECTED_PACKAGES = stringSetPreferencesKey("protected_whitelist_packages")
     private val KEY_FIREWALL_BLOCKED_PACKAGES = stringSetPreferencesKey("firewall_blocked_packages")
     private val KEY_WATCHDOG_ENABLED = booleanPreferencesKey("watchdog_enabled")
@@ -49,6 +52,8 @@ object SentinelPreferencesRepository {
     fun settingsFlow(context: Context): Flow<SentinelSettings> {
         return context.applicationContext.sentinelDataStore.data.map { prefs ->
             SentinelSettings(
+                isLoaded = true,
+                lastSeenReleaseVersion = prefs[KEY_LAST_SEEN_RELEASE_VERSION] ?: "",
                 protectedPackages = prefs[KEY_PROTECTED_PACKAGES] ?: emptySet(),
                 firewallBlockedPackages = prefs[KEY_FIREWALL_BLOCKED_PACKAGES] ?: emptySet(),
                 watchdogEnabled = prefs[KEY_WATCHDOG_ENABLED] ?: true,
@@ -66,6 +71,12 @@ object SentinelPreferencesRepository {
 
     suspend fun getSettingsSnapshot(context: Context): SentinelSettings {
         return settingsFlow(context).first()
+    }
+
+    suspend fun markReleaseVersionSeen(context: Context, version: String) {
+        context.applicationContext.sentinelDataStore.edit { prefs ->
+            prefs[KEY_LAST_SEEN_RELEASE_VERSION] = version
+        }
     }
 
     suspend fun toggleProtectedPackage(context: Context, packageName: String) {

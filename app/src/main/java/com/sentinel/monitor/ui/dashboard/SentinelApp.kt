@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Pause
@@ -53,6 +54,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.sentinel.monitor.data.model.InstalledProcessEntry
 import com.sentinel.monitor.data.model.ProcessExitSummary
 import com.sentinel.monitor.data.model.SentinelDeepLinkRequest
+import com.sentinel.monitor.data.model.SentinelReleaseNotes
 import com.sentinel.monitor.data.model.SentinelTab
 import com.sentinel.monitor.data.model.SystemSnapshot
 import com.sentinel.monitor.data.model.VitalsHistoryPoint
@@ -62,7 +64,9 @@ import com.sentinel.monitor.service.MiniHudOverlayService
 import com.sentinel.monitor.service.SentinelAutomationService
 import com.sentinel.monitor.service.SentinelWatchdogJobService
 import com.sentinel.monitor.ui.components.AutomationSetupBottomSheet
+import com.sentinel.monitor.ui.components.ReleaseNotesBottomSheet
 import com.sentinel.monitor.ui.components.SentinelMonitorCrestBadge
+import com.sentinel.monitor.ui.theme.SentinelCyan
 import com.sentinel.monitor.ui.theme.SentinelEmerald
 import com.sentinel.monitor.ui.theme.SentinelObsidian
 import com.sentinel.monitor.ui.theme.SentinelSurface
@@ -98,6 +102,16 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
 
     var pendingSetupPromptTitle by remember { mutableStateOf<String?>(null) }
     var pendingSetupAllowCacheDialog by remember { mutableStateOf(false) }
+    var showReleaseNotesSheet by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(settings.isLoaded, settings.lastSeenReleaseVersion, deepLinkReq) {
+        if (settings.isLoaded &&
+            settings.lastSeenReleaseVersion != SentinelReleaseNotes.CURRENT_VERSION &&
+            deepLinkReq == null
+        ) {
+            showReleaseNotesSheet = true
+        }
+    }
 
     val canUseSystemClearAllDialog = remember(context) {
         AppInspectorEngine.canUseSystemClearAllCacheDialog(context)
@@ -285,6 +299,13 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showReleaseNotesSheet = true }) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "What's New & Release Notes",
+                            tint = SentinelCyan
+                        )
+                    }
                     IconButton(onClick = { isLivePolling = !isLivePolling }) {
                         Icon(
                             imageVector = if (isLivePolling) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -382,6 +403,7 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
                 onDismissAutomationBanner = { SentinelAutomationService.clearBanner() },
                 onToggleMiniHud = toggleMiniHud,
                 onOpenUsageAccess = openUsageAccess,
+                onOpenReleaseNotes = { showReleaseNotesSheet = true },
                 modifier = Modifier.padding(innerPadding)
             )
             SentinelTab.PROCESSES -> ProcessesTab(
@@ -493,6 +515,20 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
             onOpenOwnAppInfo = { openAppDetails(context.packageName) },
             onUseSystemClearCacheDialog = launchSystemClearAllCacheDialog,
             onDismiss = { pendingSetupPromptTitle = null }
+        )
+    }
+
+    if (showReleaseNotesSheet) {
+        ReleaseNotesBottomSheet(
+            onDismiss = {
+                showReleaseNotesSheet = false
+                scope.launch {
+                    SentinelPreferencesRepository.markReleaseVersionSeen(
+                        context,
+                        SentinelReleaseNotes.CURRENT_VERSION
+                    )
+                }
+            }
         )
     }
 }
