@@ -16,14 +16,42 @@ data class MonitorReleaseVersion(
 
 object SentinelReleaseNotes {
 
-    const val CURRENT_VERSION = "v2.0.1"
+    const val CURRENT_VERSION = "v2.1.0"
 
     val RELEASES: List<MonitorReleaseVersion> = listOf(
+        MonitorReleaseVersion(
+            version = "v2.1.0",
+            releaseDate = "November 17, 2026",
+            tagline = "Settings Hub, AMOLED & Light Theme Engine, Material You Accents & JSON Backup/Restore",
+            isLatest = true,
+            highlights = listOf(
+                MonitorReleaseHighlight(
+                    title = "Multi-Mode Theme Studio (Obsidian, Pitch-Black AMOLED, Crisp Light & System)",
+                    description = "Switch live between signature Sentinel Obsidian, zero-power #000000 AMOLED, high-contrast Crisp Daylight, or automatic Android System Dark/Light synchronization.",
+                    category = "Themes"
+                ),
+                MonitorReleaseHighlight(
+                    title = "6 Accent Palettes Including Material You Dynamic Wallpaper",
+                    description = "Personalize all gauges, sparklines, crests, and badges with Sentinel Emerald, Cyber Cyan, Launcher Indigo, Reader Gold, Tactical Crimson, or Android 12+ Material You Dynamic Color.",
+                    category = "Personalization"
+                ),
+                MonitorReleaseHighlight(
+                    title = "Telemetry Cadence, °C/°F Units, Startup Tab & Compact Mode",
+                    description = "Configure 1s Turbo / 2s Balanced / 5s Eco sampling cadence, Celsius or Fahrenheit thermal readouts, default startup tab, and dense developer process rows.",
+                    category = "Settings"
+                ),
+                MonitorReleaseHighlight(
+                    title = "Permissions Status Hub, Suite Cross-Launch & JSON Settings Backup",
+                    description = "Audit and grant all 5 optional Android privileges in one place, jump directly to Sentinel Launcher or Sentinel Reader, and export/import portable JSON settings backups.",
+                    category = "Ecosystem & Backup"
+                )
+            )
+        ),
         MonitorReleaseVersion(
             version = "v2.0.1",
             releaseDate = "November 17, 2026",
             tagline = "Zero-Root Firewall, Storage Scavenger, Hardware/DNS Lab, Tracker X-Ray & Release Notes Hub",
-            isLatest = true,
+            isLatest = false,
             highlights = listOf(
                 MonitorReleaseHighlight(
                     title = "In-App What's New & Version History Hub",

@@ -5,11 +5,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.sentinel.monitor.data.model.SentinelDeepLinkRequest
 import com.sentinel.monitor.data.model.SentinelTab
+import com.sentinel.monitor.data.preferences.SentinelPreferencesRepository
+import com.sentinel.monitor.data.preferences.SentinelSettings
 import com.sentinel.monitor.ui.dashboard.SentinelApp
 import com.sentinel.monitor.ui.theme.SentinelMonitorTheme
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
@@ -20,7 +25,12 @@ class MainActivity : ComponentActivity() {
         parseIncomingDeepLink(intent)
         enableEdgeToEdge()
         setContent {
-            SentinelMonitorTheme {
+            val settings by SentinelPreferencesRepository.settingsFlow(this)
+                .collectAsState(initial = SentinelSettings())
+            SentinelMonitorTheme(
+                themeMode = settings.themeMode,
+                accentPreset = settings.accentPreset
+            ) {
                 SentinelApp(deepLinkRequestFlow = deepLinkRequestFlow)
             }
         }
@@ -37,6 +47,12 @@ class MainActivity : ComponentActivity() {
         if (data.scheme == "sentinel" && data.host == "monitor") {
             val tabParam = data.getQueryParameter("tab") ?: data.lastPathSegment
             val pkgParam = data.getQueryParameter("pkg")?.trim()?.takeIf { it.isNotEmpty() }
+            val wantsSettings = tabParam?.trim()?.lowercase(Locale.US) in setOf(
+                "settings",
+                "theme",
+                "themes",
+                "preferences"
+            )
             val resolvedTab = if (pkgParam != null && tabParam == null) {
                 SentinelTab.PROCESSES
             } else {
@@ -44,7 +60,8 @@ class MainActivity : ComponentActivity() {
             }
             deepLinkRequestFlow.value = SentinelDeepLinkRequest(
                 tab = resolvedTab,
-                inspectPackage = pkgParam
+                inspectPackage = pkgParam,
+                openSettings = wantsSettings
             )
         }
     }

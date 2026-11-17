@@ -809,8 +809,9 @@ private fun WatchdogSettingsColumn(
                     }
 
                     Spacer(Modifier.height(12.dp))
+                    val thermalLimitStr = TelemetryFormatters.formatTemperature(thermalSlider, settings.useFahrenheit)
                     Text(
-                        text = "Thermal Alert Limit: ${thermalSlider.roundToInt()}°C",
+                        text = "Thermal Alert Limit: $thermalLimitStr",
                         style = MaterialTheme.typography.labelMedium
                     )
                     Slider(

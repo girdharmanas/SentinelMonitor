@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sentinel.monitor.data.model.TelemetryRag
+import com.sentinel.monitor.ui.theme.SentinelCyan
+import com.sentinel.monitor.ui.theme.SentinelEmerald
 import com.sentinel.monitor.ui.theme.SentinelSurface
 import com.sentinel.monitor.ui.theme.SentinelSurfaceHigh
 import com.sentinel.monitor.ui.theme.accentColor
@@ -159,6 +161,8 @@ fun TelemetryGaugeCard(
 
 @Composable
 fun SentinelMonitorCrestBadge(modifier: Modifier = Modifier) {
+    val primary = SentinelEmerald
+    val secondary = SentinelCyan
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
@@ -180,7 +184,7 @@ fun SentinelMonitorCrestBadge(modifier: Modifier = Modifier) {
         drawPath(
             path = shield,
             brush = Brush.linearGradient(
-                colors = listOf(Color(0xFF34D399), Color(0xFF38BDF8)),
+                colors = listOf(primary, secondary),
                 start = Offset(0f, 0f),
                 end = Offset(w, h)
             ),
@@ -197,7 +201,7 @@ fun SentinelMonitorCrestBadge(modifier: Modifier = Modifier) {
         }
         drawPath(
             path = pulse,
-            color = Color(0xFFA7F3D0),
+            color = Color.White.copy(alpha = 0.90f),
             style = Stroke(width = w * 0.068f, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
     }

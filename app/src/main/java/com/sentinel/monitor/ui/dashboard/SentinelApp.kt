@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -91,6 +92,8 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
     val deepLinkReq by deepLinkRequestFlow.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(SentinelTab.VITALS) }
+    var appliedInitialTab by rememberSaveable { mutableStateOf(false) }
+    var showSettingsScreen by rememberSaveable { mutableStateOf(false) }
     var pendingInspectPackage by rememberSaveable { mutableStateOf<String?>(null) }
     var isLivePolling by rememberSaveable { mutableStateOf(true) }
     var snapshot by remember { mutableStateOf(SystemSnapshot()) }
@@ -140,11 +143,25 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
     val liveRamSparkline = remember { mutableStateListOf<Float>() }
     val liveCpuSparkline = remember { mutableStateListOf<Float>() }
 
+    LaunchedEffect(settings.isLoaded) {
+        if (settings.isLoaded && !appliedInitialTab) {
+            appliedInitialTab = true
+            if (deepLinkReq == null) {
+                selectedTab = settings.defaultStartupTab
+            }
+        }
+    }
+
     LaunchedEffect(deepLinkReq) {
         val req = deepLinkReq ?: return@LaunchedEffect
-        selectedTab = req.tab
-        if (!req.inspectPackage.isNullOrBlank()) {
-            pendingInspectPackage = req.inspectPackage
+        if (req.openSettings) {
+            showSettingsScreen = true
+        } else {
+            showSettingsScreen = false
+            selectedTab = req.tab
+            if (!req.inspectPackage.isNullOrBlank()) {
+                pendingInspectPackage = req.inspectPackage
+            }
         }
     }
 
@@ -164,7 +181,7 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
     }
 
     // Lifecycle-gated zero-overhead polling when backgrounded
-    LaunchedEffect(lifecycleOwner, isLivePolling) {
+    LaunchedEffect(lifecycleOwner, isLivePolling, settings.pollingIntervalMs) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             val initialSnap = SystemTelemetryEngine.sampleSnapshot(context)
             recordLiveSample(initialSnap)
@@ -183,7 +200,7 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
             exitSummaries = AppInspectorEngine.queryRecentExitReasons(context)
 
             while (isLivePolling) {
-                delay(2000L)
+                delay(settings.pollingIntervalMs)
                 recordLiveSample(SystemTelemetryEngine.sampleSnapshot(context))
             }
         }
@@ -272,6 +289,14 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
         }
     }
 
+    if (showSettingsScreen) {
+        SentinelSettingsScreen(
+            settings = settings,
+            snapshot = snapshot,
+            onOpenReleaseNotes = { showReleaseNotesSheet = true },
+            onClose = { showSettingsScreen = false }
+        )
+    } else {
     Scaffold(
         containerColor = SentinelObsidian,
         topBar = {
@@ -290,8 +315,9 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
+                            val cadenceSec = (settings.pollingIntervalMs / 1000L).coerceAtLeast(1L)
                             Text(
-                                text = if (isLivePolling) "Live Telemetry • 2s cadence" else "Telemetry Paused • 0-FPS Idle",
+                                text = if (isLivePolling) "Live Telemetry • ${cadenceSec}s cadence" else "Telemetry Paused • 0-FPS Idle",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -311,6 +337,13 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
                             imageVector = if (isLivePolling) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (isLivePolling) "Pause live polling" else "Resume live polling",
                             tint = SentinelEmerald
+                        )
+                    }
+                    IconButton(onClick = { showSettingsScreen = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings & Themes",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -374,6 +407,7 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
                 reclaimableCacheBytes = totalReclaimableCacheBytes,
                 isMiniHudRunning = isMiniHudRunning,
                 protectedCount = settings.protectedPackages.size,
+                useFahrenheit = settings.useFahrenheit,
                 onRunMemorySweep = {
                     if (!isSweeping) {
                         isSweeping = true
@@ -413,6 +447,7 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
                 protectedPackages = settings.protectedPackages,
                 automationProgress = automationProgress,
                 hasUsageAccess = snapshot.hasUsageStatsAccess,
+                compactRows = settings.compactProcessRows,
                 deepLinkInspectPackage = pendingInspectPackage,
                 onConsumeDeepLinkPackage = { pendingInspectPackage = null },
                 onToggleProtected = { pkg ->
@@ -501,6 +536,7 @@ fun SentinelApp(deepLinkRequestFlow: StateFlow<SentinelDeepLinkRequest?>) {
                 modifier = Modifier.padding(innerPadding)
             )
         }
+    }
     }
 
     if (pendingSetupPromptTitle != null) {

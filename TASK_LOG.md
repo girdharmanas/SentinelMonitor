@@ -14,6 +14,19 @@ _None — All active tasks completed._
 
 ## 📋 Task History & Completed Work
 
+### `TASK-MONITOR-SETTINGS-AND-THEMES-010`: Full Settings Hub, Multi-Mode Theme Engine, Accent Presets (incl. Material You) & JSON Backup/Restore (`v2.1.0`)
+- **Status:** COMPLETED
+- **Started:** 2026-11-17 17:12
+- **Completed:** 2026-11-17 17:19
+- **Branch:** `main`
+- **Objective:** Add a comprehensive Settings & Personalization experience to Sentinel Monitor (`v2.1.0`), including 4 Theme Modes (`Obsidian`, `True AMOLED #000000`, `Crisp Light`, `System`), 6 Accent Palettes (`Sentinel Emerald`, `Cyber Cyan`, `Launcher Indigo`, `Reader Gold`, `Tactical Crimson`, `Material You Dynamic`), configurable Telemetry Cadence (`1s` / `2s` / `5s`), `°C`/`°F` Temperature Units, Default Startup Tab, Compact Process Rows, centralized Permissions Status Hub, Sentinel Suite cross-launcher cards, and JSON Settings Backup Export/Import.
+- **Architectural & UI Improvements Delivered:**
+  - **Reactive CompositionLocal Theme Engine (`Theme.kt`, `TelemetryChartsAndCards.kt`, `MainActivity.kt`)**: Powered all semantic tokens (`SentinelObsidian`, `SentinelSurface`, `SentinelSurfaceHigh`, `SentinelEmerald`, `SentinelCyan`, `SentinelAmber`, `SentinelCrimson`, `TelemetryRag.accentColor()`, and `SentinelMonitorCrestBadge`) via `LocalSentinelPalette`, supporting `OBSIDIAN`, `AMOLED` (`#000000`), `LIGHT` (WCAG-calibrated contrast + automatic dark status/nav bar icons), and `SYSTEM`, plus 6 accent presets including Android 12+ `dynamicDarkColorScheme`/`dynamicLightColorScheme`.
+  - **Full-Screen Settings & Theme Studio (`SentinelSettingsScreen.kt`, `SentinelPreferences.kt`, `SentinelApp.kt`, `VitalsTab.kt`, `ProcessesAndXRayTab.kt`, `LabAndWatchdogTab.kt`)**: Added TopAppBar Settings gear + `sentinel://monitor?tab=settings` deep-link, live Theme/Accent pickers, `1s/2s/5s` polling cadence, `°C`/`°F` thermal formatter, Default Startup Tab, Compact Developer Process Rows, 5-item Android Permissions Status Hub, Sentinel Launcher/Reader cross-launchers, and SAF JSON Backup Export/Import.
+- **Verification:** `7/7` JUnit test suites (`SentinelTelemetryTest`), `lintVitalRelease` (`0` errors, `0` Kotlin warnings), and R8 `assembleRelease` verified & published to `H:/My Drive/Sentinel/Monitor`.
+
+---
+
 ### `TASK-WHATS-NEW-RELEASE-NOTES-009`: Add In-App What's New & Versioned Release Notes Hub (`v2.0.1`)
 - **Status:** COMPLETED
 - **Started:** 2026-11-17 15:54

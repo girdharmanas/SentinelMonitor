@@ -10,6 +10,10 @@ import com.sentinel.monitor.data.model.SystemSnapshot
 import com.sentinel.monitor.data.model.TelemetryFormatters
 import com.sentinel.monitor.data.model.TelemetryRag
 import com.sentinel.monitor.data.model.VitalsHistoryPoint
+import com.sentinel.monitor.data.preferences.MonitorAccentPreset
+import com.sentinel.monitor.data.preferences.MonitorThemeMode
+import com.sentinel.monitor.data.preferences.SentinelPreferencesRepository
+import com.sentinel.monitor.data.preferences.SentinelSettings
 import com.sentinel.monitor.service.SentinelAutomationService
 import com.sentinel.monitor.util.AppInspectorEngine
 import com.sentinel.monitor.util.NetworkAndHardwareLabEngine
@@ -352,5 +356,50 @@ class SentinelTelemetryTest {
         assertTrue(releases.first().isLatest)
         assertEquals(releases.size, releases.map { it.version }.toSet().size)
         assertTrue(releases.all { r -> r.highlights.isNotEmpty() && r.highlights.all { h -> h.title.isNotBlank() && h.description.isNotBlank() } })
+    }
+
+    @Test
+    fun settingsThemesUnitsAndBackupJson_roundTripLosslessly() {
+        assertEquals("30.0°C", TelemetryFormatters.formatTemperature(30.0f, useFahrenheit = false))
+        assertEquals("86.0°F", TelemetryFormatters.formatTemperature(30.0f, useFahrenheit = true))
+
+        assertEquals(MonitorThemeMode.AMOLED, MonitorThemeMode.fromKey("amoled"))
+        assertEquals(MonitorThemeMode.LIGHT, MonitorThemeMode.fromKey("LIGHT"))
+        assertEquals(MonitorThemeMode.OBSIDIAN, MonitorThemeMode.fromKey("unknown_theme"))
+        assertEquals(MonitorAccentPreset.MATERIAL_YOU, MonitorAccentPreset.fromKey("material_you"))
+        assertEquals(MonitorAccentPreset.ROYAL_INDIGO, MonitorAccentPreset.fromKey("royal_indigo"))
+
+        val original = SentinelSettings(
+            themeMode = MonitorThemeMode.AMOLED,
+            accentPreset = MonitorAccentPreset.CYBER_CYAN,
+            pollingIntervalMs = 1000L,
+            useFahrenheit = true,
+            defaultStartupTab = SentinelTab.WATCHDOG,
+            compactProcessRows = true,
+            watchdogEnabled = false,
+            chargeLimitAlarmEnabled = true,
+            chargeLimitPercent = 85,
+            thermalAlertThresholdC = 43.5f,
+            storageAlertFreePercent = 12,
+            drainAlertPctPerHour = 5.5f,
+            protectedPackages = setOf("com.sentinel.launcher", "com.spotify.music"),
+            firewallBlockedPackages = setOf("com.example.adgame")
+        )
+
+        val json = SentinelPreferencesRepository.serializeBackupJson(original)
+        val restored = SentinelPreferencesRepository.parseBackupJson(json)
+        assertEquals(MonitorThemeMode.AMOLED, restored.themeMode)
+        assertEquals(MonitorAccentPreset.CYBER_CYAN, restored.accentPreset)
+        assertEquals(1000L, restored.pollingIntervalMs)
+        assertTrue(restored.useFahrenheit)
+        assertEquals(SentinelTab.WATCHDOG, restored.defaultStartupTab)
+        assertTrue(restored.compactProcessRows)
+        assertFalse(restored.watchdogEnabled)
+        assertTrue(restored.chargeLimitAlarmEnabled)
+        assertEquals(85, restored.chargeLimitPercent)
+        assertEquals(43.5f, restored.thermalAlertThresholdC, 0.01f)
+        assertEquals(12, restored.storageAlertFreePercent)
+        assertEquals(setOf("com.sentinel.launcher", "com.spotify.music"), restored.protectedPackages)
+        assertEquals(setOf("com.example.adgame"), restored.firewallBlockedPackages)
     }
 }

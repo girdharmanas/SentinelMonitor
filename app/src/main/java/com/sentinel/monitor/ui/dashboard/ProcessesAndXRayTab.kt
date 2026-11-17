@@ -103,6 +103,7 @@ fun ProcessesTab(
     protectedPackages: Set<String>,
     automationProgress: AutomationProgress,
     hasUsageAccess: Boolean,
+    compactRows: Boolean = false,
     deepLinkInspectPackage: String? = null,
     onConsumeDeepLinkPackage: () -> Unit = {},
     onToggleProtected: (String) -> Unit,
@@ -271,8 +272,9 @@ fun ProcessesTab(
             ) {
                 items(filtered, key = { it.packageName }) { item ->
                     val isProtected = item.packageName in protectedPackages
+                    val rowVertPad = if (compactRows) 6.dp else 12.dp
                     Card(
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(if (compactRows) 14.dp else 18.dp),
                         colors = CardDefaults.cardColors(containerColor = SentinelSurface),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -280,7 +282,7 @@ fun ProcessesTab(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(start = 16.dp, end = 6.dp, top = 12.dp, bottom = 12.dp)
+                            modifier = Modifier.padding(start = 16.dp, end = 6.dp, top = rowVertPad, bottom = rowVertPad)
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {

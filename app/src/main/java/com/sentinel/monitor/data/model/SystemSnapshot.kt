@@ -28,6 +28,7 @@ enum class SentinelTab(val routeKey: String, val label: String) {
 data class SentinelDeepLinkRequest(
     val tab: SentinelTab,
     val inspectPackage: String? = null,
+    val openSettings: Boolean = false,
     val requestNonce: Long = System.currentTimeMillis()
 )
 
@@ -446,6 +447,15 @@ object TelemetryFormatters {
         if (mag < 0.05f) return if (isCharging) "Trickle / Full" else "0.0 W"
         val sign = if (isCharging) "+" else "-"
         return String.format(Locale.US, "%s%.1f W", sign, mag)
+    }
+
+    fun formatTemperature(tempCelsius: Float, useFahrenheit: Boolean): String {
+        return if (useFahrenheit) {
+            val f = (tempCelsius * 9f / 5f) + 32f
+            String.format(Locale.US, "%.1f°F", f)
+        } else {
+            String.format(Locale.US, "%.1f°C", tempCelsius)
+        }
     }
 
     fun normalizeBatteryCurrentToMilliamps(rawCurrentNow: Long): Float {

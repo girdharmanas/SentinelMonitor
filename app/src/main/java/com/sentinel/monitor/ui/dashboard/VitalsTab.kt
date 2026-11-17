@@ -57,7 +57,6 @@ import com.sentinel.monitor.ui.theme.SentinelCyan
 import com.sentinel.monitor.ui.theme.SentinelEmerald
 import com.sentinel.monitor.ui.theme.SentinelSurface
 import com.sentinel.monitor.ui.theme.SentinelSurfaceHigh
-import java.util.Locale
 
 @Composable
 fun VitalsTab(
@@ -71,6 +70,7 @@ fun VitalsTab(
     reclaimableCacheBytes: Long,
     isMiniHudRunning: Boolean,
     protectedCount: Int,
+    useFahrenheit: Boolean = false,
     onRunMemorySweep: () -> Unit,
     onStopNonEssentialProcesses: () -> Unit,
     onAutoClearAllCaches: () -> Unit,
@@ -333,17 +333,12 @@ fun VitalsTab(
         // 4. Power, Live Wattage (W) & Thermal Throttling Envelope
         item {
             val wattsStr = TelemetryFormatters.formatWatts(snapshot.batteryPowerWatts, snapshot.isCharging)
+            val tempStr = TelemetryFormatters.formatTemperature(snapshot.batteryTempCelsius, useFahrenheit)
             val cycleSuffix = if (snapshot.batteryCycleCount >= 0) " • ${snapshot.batteryCycleCount} cycles" else ""
             TelemetryGaugeCard(
                 title = "Power, Wattage & Thermal",
                 icon = Icons.Default.BatteryChargingFull,
-                headline = String.format(
-                    Locale.US,
-                    "%d%% • %s • %.1f°C",
-                    snapshot.batteryPercent,
-                    wattsStr,
-                    snapshot.batteryTempCelsius
-                ),
+                headline = "${snapshot.batteryPercent}% • $wattsStr • $tempStr",
                 subtitle = "${snapshot.thermalStatusLabel} • ${snapshot.batteryVoltageMv} mV$cycleSuffix",
                 progress = (snapshot.batteryPercent / 100f).coerceIn(0f, 1f),
                 rag = thermalRag
