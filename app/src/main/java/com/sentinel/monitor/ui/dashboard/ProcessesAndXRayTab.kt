@@ -26,12 +26,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,7 +51,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -68,6 +68,8 @@ import com.sentinel.monitor.data.model.AppXRayDetails
 import com.sentinel.monitor.data.model.InstalledProcessEntry
 import com.sentinel.monitor.data.model.ProcessExitSummary
 import com.sentinel.monitor.data.model.TelemetryFormatters
+import com.sentinel.monitor.service.AutomationProgress
+import com.sentinel.monitor.ui.components.AutomationBannerCard
 import com.sentinel.monitor.ui.theme.SentinelAmber
 import com.sentinel.monitor.ui.theme.SentinelCrimson
 import com.sentinel.monitor.ui.theme.SentinelCyan
@@ -77,6 +79,7 @@ import com.sentinel.monitor.ui.theme.SentinelSurfaceHigh
 import com.sentinel.monitor.util.AppInspectorEngine
 
 private enum class ProcessFilterMode(val label: String) {
+    RUNNING_NON_ESSENTIAL("Running Non-Essential"),
     CULPRITS_24H("24h Active"),
     USER_APPS("User Apps"),
     WHITELISTED("Protected"),
@@ -88,10 +91,17 @@ private enum class ProcessFilterMode(val label: String) {
 @Composable
 fun ProcessesTab(
     processes: List<InstalledProcessEntry>,
+    nonEssentialRunning: List<InstalledProcessEntry>,
     exitSummaries: List<ProcessExitSummary>,
     protectedPackages: Set<String>,
+    automationProgress: AutomationProgress,
     hasUsageAccess: Boolean,
     onToggleProtected: (String) -> Unit,
+    onStopAllNonEssential: () -> Unit,
+    onForceStopSingleApp: (InstalledProcessEntry) -> Unit,
+    onClearCacheSingleApp: (InstalledProcessEntry) -> Unit,
+    onCancelAutomation: () -> Unit,
+    onDismissAutomationBanner: () -> Unit,
     onOpenAppDetails: (String) -> Unit,
     onUninstallApp: (String) -> Unit,
     onGrantUsageAccess: () -> Unit,
@@ -99,13 +109,9 @@ fun ProcessesTab(
 ) {
     val context = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
-    var filterMode by rememberSaveable { mutableStateOf(ProcessFilterMode.USER_APPS) }
+    var filterMode by rememberSaveable { mutableStateOf(ProcessFilterMode.RUNNING_NON_ESSENTIAL) }
     var inspectedEntry by remember { mutableStateOf<InstalledProcessEntry?>(null) }
     var xrayDetails by remember { mutableStateOf<AppXRayDetails?>(null) }
-
-    // Guided Hibernate / Force-Stop Queue for top non-protected culprits
-    var triageQueue by remember { mutableStateOf<List<InstalledProcessEntry>>(emptyList()) }
-    var triageStepIndex by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(inspectedEntry) {
         val target = inspectedEntry
@@ -116,8 +122,9 @@ fun ProcessesTab(
         }
     }
 
-    val filtered = remember(processes, query, filterMode, protectedPackages) {
+    val filtered = remember(processes, nonEssentialRunning, query, filterMode, protectedPackages) {
         val base = when (filterMode) {
+            ProcessFilterMode.RUNNING_NON_ESSENTIAL -> nonEssentialRunning
             ProcessFilterMode.CULPRITS_24H -> processes.filter { it.totalForegroundMillis24h > 0L || it.isRecentlyActive }
             ProcessFilterMode.USER_APPS -> processes.filter { !it.isSystemApp }
             ProcessFilterMode.WHITELISTED -> processes.filter { it.packageName in protectedPackages }
@@ -135,6 +142,15 @@ fun ProcessesTab(
             .fillMaxSize()
             .padding(horizontal = 16.dp)
     ) {
+        if (automationProgress.isRunning || automationProgress.lastSummaryBanner != null) {
+            Spacer(Modifier.height(6.dp))
+            AutomationBannerCard(
+                progress = automationProgress,
+                onCancel = onCancelAutomation,
+                onDismissSummary = onDismissAutomationBanner
+            )
+        }
+
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
@@ -155,11 +171,56 @@ fun ProcessesTab(
                 .padding(vertical = 8.dp)
         ) {
             ProcessFilterMode.entries.forEach { mode ->
+                val countBadge = if (mode == ProcessFilterMode.RUNNING_NON_ESSENTIAL) {
+                    " (${nonEssentialRunning.size})"
+                } else {
+                    ""
+                }
                 FilterChip(
                     selected = filterMode == mode,
                     onClick = { filterMode = mode },
-                    label = { Text(mode.label) }
+                    label = { Text("${mode.label}$countBadge") }
                 )
+            }
+        }
+
+        // Direct 1-Tap Stop Non-Essential Processes Bar
+        if (filterMode != ProcessFilterMode.EXIT_LOG) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = SentinelSurfaceHigh),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "${nonEssentialRunning.size} Non-Essential Apps Active",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Tap Shield on any app below to protect it from sweeps.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = onStopAllNonEssential,
+                        enabled = !automationProgress.isRunning && nonEssentialRunning.isNotEmpty(),
+                        colors = ButtonDefaults.buttonColors(containerColor = SentinelEmerald),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.StopCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Stop All")
+                    }
+                }
             }
         }
 
@@ -172,89 +233,6 @@ fun ProcessesTab(
                     .padding(bottom = 8.dp)
                     .clickable { onGrantUsageAccess() }
             )
-        }
-
-        // Guided Force-Stop Triage Queue Banner
-        if (triageQueue.isNotEmpty() && triageStepIndex in triageQueue.indices) {
-            val currentHog = triageQueue[triageStepIndex]
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = SentinelSurfaceHigh),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 10.dp)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = "Hibernate Queue (${triageStepIndex + 1} of ${triageQueue.size}): ${currentHog.appLabel}",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = SentinelCyan
-                    )
-                    Text(
-                        text = "Tap Force Stop in App Info, then tap Next Culprit.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { onOpenAppDetails(currentHog.packageName) },
-                            colors = ButtonDefaults.buttonColors(containerColor = SentinelEmerald),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Open App Info")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                if (triageStepIndex + 1 < triageQueue.size) {
-                                    triageStepIndex++
-                                    onOpenAppDetails(triageQueue[triageStepIndex].packageName)
-                                } else {
-                                    triageQueue = emptyList()
-                                    triageStepIndex = 0
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(if (triageStepIndex + 1 < triageQueue.size) "Next →" else "Finish")
-                        }
-                    }
-                }
-            }
-        } else if (filterMode != ProcessFilterMode.EXIT_LOG && filtered.size >= 2) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-            ) {
-                Text(
-                    text = "${filtered.size} packages",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = "Hibernate Top 5 Hogs →",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = SentinelCyan,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickable {
-                        val candidates = filtered.filter {
-                            !it.isSystemApp &&
-                                it.packageName != context.packageName &&
-                                it.packageName !in protectedPackages
-                        }.take(5)
-                        if (candidates.isNotEmpty()) {
-                            triageQueue = candidates
-                            triageStepIndex = 0
-                            onOpenAppDetails(candidates.first().packageName)
-                        }
-                    }
-                )
-            }
         }
 
         if (filterMode == ProcessFilterMode.EXIT_LOG) {
@@ -276,7 +254,7 @@ fun ProcessesTab(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp)
+                            modifier = Modifier.padding(start = 16.dp, end = 6.dp, top = 12.dp, bottom = 12.dp)
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -289,7 +267,7 @@ fun ProcessesTab(
                                         modifier = Modifier.weight(1f, fill = false)
                                     )
                                     Spacer(Modifier.width(6.dp))
-                                    StandbyBadge(item.standbyBucketLabel)
+                                    StandbyBadge(if (item.isStopped) "STOPPED" else item.standbyBucketLabel)
                                 }
                                 Text(
                                     text = item.packageName,
@@ -315,6 +293,15 @@ fun ProcessesTab(
                                     color = SentinelEmerald
                                 )
                             }
+                            if (!item.isStopped && !item.isSystemApp && item.packageName != context.packageName) {
+                                IconButton(onClick = { onForceStopSingleApp(item) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.StopCircle,
+                                        contentDescription = "Force Stop App",
+                                        tint = SentinelCrimson
+                                    )
+                                }
+                            }
                             IconButton(onClick = { onToggleProtected(item.packageName) }) {
                                 Icon(
                                     imageVector = if (isProtected) Icons.Filled.Shield else Icons.Outlined.Shield,
@@ -334,18 +321,27 @@ fun ProcessesTab(
             onDismissRequest = { inspectedEntry = null },
             containerColor = SentinelSurface
         ) {
+            val target = inspectedEntry!!
             AppXRayBottomSheetContent(
-                entry = inspectedEntry!!,
+                entry = target,
                 xray = xrayDetails,
-                isProtected = inspectedEntry!!.packageName in protectedPackages,
-                onToggleProtected = { onToggleProtected(inspectedEntry!!.packageName) },
+                isProtected = target.packageName in protectedPackages,
+                onToggleProtected = { onToggleProtected(target.packageName) },
+                onForceStop = {
+                    inspectedEntry = null
+                    onForceStopSingleApp(target)
+                },
+                onClearCache = {
+                    inspectedEntry = null
+                    onClearCacheSingleApp(target)
+                },
                 onOpenAppInfo = {
-                    val pkg = inspectedEntry!!.packageName
+                    val pkg = target.packageName
                     inspectedEntry = null
                     onOpenAppDetails(pkg)
                 },
                 onUninstall = {
-                    val pkg = inspectedEntry!!.packageName
+                    val pkg = target.packageName
                     inspectedEntry = null
                     onUninstallApp(pkg)
                 }
@@ -446,6 +442,8 @@ private fun AppXRayBottomSheetContent(
     xray: AppXRayDetails?,
     isProtected: Boolean,
     onToggleProtected: () -> Unit,
+    onForceStop: () -> Unit,
+    onClearCache: () -> Unit,
     onOpenAppInfo: () -> Unit,
     onUninstall: () -> Unit
 ) {
@@ -499,6 +497,36 @@ private fun AppXRayBottomSheetContent(
             }
         }
 
+        // Direct 1-Tap Force Stop & Clear Cache Row for this App
+        if (entry.packageName != context.packageName) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Button(
+                    onClick = onForceStop,
+                    enabled = !entry.isStopped,
+                    colors = ButtonDefaults.buttonColors(containerColor = SentinelCrimson),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.StopCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (entry.isStopped) "Already Stopped" else "Force Stop")
+                }
+                Button(
+                    onClick = onClearCache,
+                    colors = ButtonDefaults.buttonColors(containerColor = SentinelAmber),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Clear Cache")
+                }
+            }
+        }
+
         if (entry.sensitivePermissions.isNotEmpty()) {
             Text(
                 text = "Granted High-Privilege Capabilities",
@@ -546,13 +574,12 @@ private fun AppXRayBottomSheetContent(
                 Spacer(Modifier.width(4.dp))
                 Text(if (isProtected) "Protected" else "Protect")
             }
-            Button(
+            OutlinedButton(
                 onClick = onOpenAppInfo,
-                colors = ButtonDefaults.buttonColors(containerColor = SentinelEmerald),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("App Info")
             }

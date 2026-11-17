@@ -14,6 +14,24 @@ _No active task in progress._
 
 ## 📋 Task History & Completed Work
 
+### `TASK-DIRECT-CACHE-CLEAR-AND-PROCESS-STOPPER-007`: Direct In-App Cache Cleaner & 1-Tap Non-Essential Process Stopper (`v1.1.0`)
+- **Status:** COMPLETED
+- **Started:** 2026-11-17 11:26
+- **Completed:** 2026-11-17 11:38
+- **Branch:** `main`
+- **Objective:** Add direct buttons in Sentinel Monitor to (1) clear app caches (per-app, batch top cache hogs via `SentinelAutomationService`, and Android 11+ `StorageManager.ACTION_CLEAR_APP_CACHE` system-wide dialog) and (2) truly Force-Stop all running non-essential background processes (`FLAG_STOPPED == 0`, strictly protecting essential system/launcher/IME/Sentinel & user-whitelisted apps).
+- **Architectural & Safety Improvements Delivered:**
+  1. **Zero-Overhead User-Triggered Automation Engine (`SentinelAutomationService.kt`, `sentinel_automation_accessibility.xml`, `AndroidManifest.xml`)**:
+     - Added coroutine-driven `FORCE_STOP_PROCESSES` and `CLEAR_APP_CACHES` batch automation supporting both Android 14–15 Jetpack Compose Settings (`SpaActivity` merged rows) and classic XML / Samsung One UI Settings, returning automatically to `Sentinel Monitor` upon completion with live reclaimed-bytes summary.
+     - Enforced hard safety blacklists in `isSafeClearCacheLabel` (`data`, `storage`, `manage`, `space`, `uninstall`, `delete`, `reset`, `archive`) so user app data/logins can never be touched, and kept `onAccessibilityEvent` 100% inert (`0` CPU) when idle.
+  2. **Running Non-Essential Target Filter & OS Cache Dialog (`AppInspectorEngine.kt`, `SystemSnapshot.kt`)**:
+     - Added `isStopped` (`ApplicationInfo.FLAG_STOPPED`) tracking + `selectNonEssentialRunningTargets` (filtering strictly to active non-essential user apps outside Sentinel/launcher/IME/system/whitelist) and `selectCacheHogTargets` + `StorageManager.ACTION_CLEAR_APP_CACHE` fallback support.
+  3. **Direct 1-Tap Controls Across Vitals, Processes, App X-Ray & Storage (`VitalsTab.kt`, `ProcessesAndXRayTab.kt`, `StorageSecurityWatchdogTabs.kt`, `AutomationSetupSheet.kt`, `SentinelApp.kt`)**:
+     - Added `Stop Apps (N)` & `Clear (X MB/GB)` primary buttons on `Vitals`, `Stop All` + per-row Force-Stop icons & `Running Non-Essential (N)` filter on `Processes`, `Force Stop` & `Clear Cache` buttons inside `App X-Ray`, `Auto-Clear Cache Hogs` + `OS Clear All` + per-row `Clear X MB` pills on `Storage`, and a 1-time `AutomationSetupBottomSheet` with Android 13–15 Restricted Settings helper.
+- **Verification:** `5/5` JUnit test suites (`SentinelTelemetryTest`), `lintVitalRelease` (`0` errors, `0` Kotlin warnings), R8 `assembleRelease`, and live `Pixel_9_Pro_XL` verification (`VITALS_HAS_STOP_BTN=True`, `VITALS_HAS_CLEAR_BTN=True`, `STORAGE_HAS_AUTO_CLEAR_BTN=True`, `PROC_HAS_STOP_ALL=True`, `CRASH_LOG_LEN=0`).
+
+---
+
 ### `TASK-SENTINEL-MONITOR-V1-FULL-SUITE-006`: Deliver Full Flagship `Sentinel Monitor v1.0.0` Suite + `Sentinel Launcher` Deep-Link Integration
 - **Status:** COMPLETED
 - **Started:** 2026-11-16 21:32

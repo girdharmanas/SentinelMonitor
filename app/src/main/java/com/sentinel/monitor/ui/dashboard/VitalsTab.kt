@@ -19,11 +19,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,8 +48,11 @@ import androidx.compose.ui.unit.dp
 import com.sentinel.monitor.data.model.SystemSnapshot
 import com.sentinel.monitor.data.model.TelemetryFormatters
 import com.sentinel.monitor.data.model.TelemetryRag
+import com.sentinel.monitor.service.AutomationProgress
+import com.sentinel.monitor.ui.components.AutomationBannerCard
 import com.sentinel.monitor.ui.components.TelemetryGaugeCard
 import com.sentinel.monitor.ui.components.TelemetrySparkline
+import com.sentinel.monitor.ui.theme.SentinelAmber
 import com.sentinel.monitor.ui.theme.SentinelCyan
 import com.sentinel.monitor.ui.theme.SentinelEmerald
 import com.sentinel.monitor.ui.theme.SentinelSurface
@@ -60,9 +66,16 @@ fun VitalsTab(
     liveCpuSparkline: List<Float>,
     isSweeping: Boolean,
     sweepBanner: String?,
+    automationProgress: AutomationProgress,
+    nonEssentialRunningCount: Int,
+    reclaimableCacheBytes: Long,
     isMiniHudRunning: Boolean,
     protectedCount: Int,
     onRunMemorySweep: () -> Unit,
+    onStopNonEssentialProcesses: () -> Unit,
+    onAutoClearAllCaches: () -> Unit,
+    onCancelAutomation: () -> Unit,
+    onDismissAutomationBanner: () -> Unit,
     onToggleMiniHud: () -> Unit,
     onOpenUsageAccess: () -> Unit,
     modifier: Modifier = Modifier
@@ -77,7 +90,17 @@ fun VitalsTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 1. Safe Sweep + Mini-HUD Action Card
+        if (automationProgress.isRunning || automationProgress.lastSummaryBanner != null) {
+            item {
+                AutomationBannerCard(
+                    progress = automationProgress,
+                    onCancel = onCancelAutomation,
+                    onDismissSummary = onDismissAutomationBanner
+                )
+            }
+        }
+
+        // 1. Direct Process, Memory & Cache Control Center
         item {
             Card(
                 shape = RoundedCornerShape(24.dp),
@@ -94,7 +117,7 @@ fun VitalsTab(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.CleaningServices,
+                                imageVector = Icons.Default.Bolt,
                                 contentDescription = null,
                                 tint = SentinelEmerald
                             )
@@ -102,28 +125,70 @@ fun VitalsTab(
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Safe Background Sweep",
+                                text = "1-Tap Process & Cache Control",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            val wlNote = if (protectedCount > 0) " • $protectedCount user-whitelisted" else ""
+                            val wlNote = if (protectedCount > 0) " • $protectedCount protected" else ""
                             Text(
-                                text = "Reclaims cached RAM while protecting system, launcher & IME$wlNote",
+                                text = "$nonEssentialRunningCount active non-essential apps$wlNote",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
+
                     Spacer(Modifier.height(14.dp))
+
+                    // Primary Row: Stop Non-Essential Processes + Clear App Caches
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            onClick = onRunMemorySweep,
-                            enabled = !isSweeping,
+                            onClick = onStopNonEssentialProcesses,
+                            enabled = !automationProgress.isRunning,
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = SentinelEmerald),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(if (isSweeping) "Sweeping…" else "Sweep RAM")
+                            Icon(Icons.Default.StopCircle, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Stop Apps ($nonEssentialRunningCount)")
+                        }
+                        Button(
+                            onClick = onAutoClearAllCaches,
+                            enabled = !automationProgress.isRunning,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = SentinelAmber),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(6.dp))
+                            val cacheLbl = if (reclaimableCacheBytes >= 1024 * 1024L) {
+                                "Clear (${TelemetryFormatters.formatBytes(reclaimableCacheBytes)})"
+                            } else {
+                                "Clear Cache"
+                            }
+                            Text(cacheLbl, maxLines = 1)
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    // Secondary Row: Instant Cached RAM Sweep + Floating Mini-HUD
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick = onRunMemorySweep,
+                            enabled = !isSweeping,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CleaningServices,
+                                contentDescription = null,
+                                tint = SentinelEmerald,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (isSweeping) "Sweeping…" else "Quick RAM Sweep")
                         }
                         OutlinedButton(
                             onClick = onToggleMiniHud,
@@ -133,12 +198,13 @@ fun VitalsTab(
                                 imageVector = Icons.Default.PictureInPictureAlt,
                                 contentDescription = null,
                                 tint = if (isMiniHudRunning) SentinelEmerald else SentinelCyan,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(if (isMiniHudRunning) "Stop HUD" else "Mini-HUD")
                         }
                     }
+
                     if (sweepBanner != null) {
                         Spacer(Modifier.height(10.dp))
                         Text(

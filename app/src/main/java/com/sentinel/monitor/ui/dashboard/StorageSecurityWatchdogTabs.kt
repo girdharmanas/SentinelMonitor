@@ -1,10 +1,8 @@
 package com.sentinel.monitor.ui.dashboard
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Security
@@ -47,7 +46,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +56,8 @@ import com.sentinel.monitor.data.model.SystemSnapshot
 import com.sentinel.monitor.data.model.TelemetryFormatters
 import com.sentinel.monitor.data.model.TelemetryRag
 import com.sentinel.monitor.data.preferences.SentinelSettings
+import com.sentinel.monitor.service.AutomationProgress
+import com.sentinel.monitor.ui.components.AutomationBannerCard
 import com.sentinel.monitor.ui.components.TelemetryGaugeCard
 import com.sentinel.monitor.ui.components.TelemetrySparkline
 import com.sentinel.monitor.ui.theme.SentinelAmber
@@ -72,6 +72,13 @@ import kotlin.math.roundToInt
 fun StorageTab(
     snapshot: SystemSnapshot,
     processes: List<InstalledProcessEntry>,
+    automationProgress: AutomationProgress,
+    canUseSystemClearAllDialog: Boolean,
+    onAutoClearTopCaches: () -> Unit,
+    onSystemClearAllCaches: () -> Unit,
+    onClearSingleAppCache: (InstalledProcessEntry) -> Unit,
+    onCancelAutomation: () -> Unit,
+    onDismissAutomationBanner: () -> Unit,
     onOpenAppStorage: (String) -> Unit,
     onGrantUsageAccess: () -> Unit,
     modifier: Modifier = Modifier
@@ -94,6 +101,16 @@ fun StorageTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        if (automationProgress.isRunning || automationProgress.lastSummaryBanner != null) {
+            item {
+                AutomationBannerCard(
+                    progress = automationProgress,
+                    onCancel = onCancelAutomation,
+                    onDismissSummary = onDismissAutomationBanner
+                )
+            }
+        }
+
         item {
             TelemetryGaugeCard(
                 title = "User Data Partition (/data)",
@@ -116,7 +133,7 @@ fun StorageTab(
                         Icon(Icons.Default.CleaningServices, contentDescription = null, tint = SentinelAmber)
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            text = "App Cache & Storage Hog Analyzer",
+                            text = "Direct App Cache Cleaner",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -124,17 +141,28 @@ fun StorageTab(
                     Spacer(Modifier.height(6.dp))
                     if (!snapshot.hasUsageStatsAccess) {
                         Text(
-                            text = "Grant Usage Access so StorageStatsManager can measure exact per-app Cache, User Data, and APK sizes.",
+                            text = "Grant Usage Access so Sentinel can measure exact per-app Cache sizes and auto-clean top cache hogs.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(10.dp))
-                        Button(
-                            onClick = onGrantUsageAccess,
-                            colors = ButtonDefaults.buttonColors(containerColor = SentinelEmerald),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Grant Usage Access")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = onGrantUsageAccess,
+                                colors = ButtonDefaults.buttonColors(containerColor = SentinelEmerald),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Grant Usage Access")
+                            }
+                            if (canUseSystemClearAllDialog) {
+                                OutlinedButton(
+                                    onClick = onSystemClearAllCaches,
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("System Clear All")
+                                }
+                            }
                         }
                     } else {
                         Text(
@@ -144,10 +172,32 @@ fun StorageTab(
                             color = SentinelEmerald
                         )
                         Text(
-                            text = "Tap any top cache offender below to jump straight to its Storage & Cache screen.",
+                            text = "Clear top app caches automatically in 1 tap (user data & logins are strictly untouched).",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = onAutoClearTopCaches,
+                                enabled = !automationProgress.isRunning,
+                                colors = ButtonDefaults.buttonColors(containerColor = SentinelAmber),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Auto-Clear Cache Hogs")
+                            }
+                            if (canUseSystemClearAllDialog) {
+                                OutlinedButton(
+                                    onClick = onSystemClearAllCaches,
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("OS Clear All")
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -163,32 +213,43 @@ fun StorageTab(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = app.appLabel,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = app.appLabel,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Total ${TelemetryFormatters.formatBytes(app.totalStorageBytes)} • App ${TelemetryFormatters.formatBytes(app.appBytes)} • Data ${TelemetryFormatters.formatBytes(app.dataBytes)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = if (app.cacheBytes > 0L) {
-                                "${TelemetryFormatters.formatBytes(app.cacheBytes)} cache"
-                            } else {
-                                TelemetryFormatters.formatBytes(app.totalStorageBytes)
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (app.cacheBytes >= 100L * 1024L * 1024L) SentinelAmber else SentinelEmerald,
-                            fontWeight = FontWeight.Bold
-                        )
+                        if (app.cacheBytes > 0L) {
+                            OutlinedButton(
+                                onClick = { onClearSingleAppCache(app) },
+                                enabled = !automationProgress.isRunning,
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "Clear ${TelemetryFormatters.formatBytes(app.cacheBytes)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (app.cacheBytes >= 100L * 1024L * 1024L) SentinelAmber else SentinelEmerald,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = TelemetryFormatters.formatBytes(app.totalStorageBytes),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Total ${TelemetryFormatters.formatBytes(app.totalStorageBytes)} • App ${TelemetryFormatters.formatBytes(app.appBytes)} • Data ${TelemetryFormatters.formatBytes(app.dataBytes)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     if (app.totalStorageBytes > 0L && app.cacheBytes > 0L) {
                         Spacer(Modifier.height(6.dp))
                         val cacheFrac = (app.cacheBytes.toDouble() / app.totalStorageBytes.toDouble()).toFloat().coerceIn(0.04f, 1f)

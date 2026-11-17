@@ -119,6 +119,7 @@ object AppInspectorEngine {
                 targetSdk = appInfo.targetSdkVersion,
                 isSystemApp = isSystem,
                 isUpdatedSystemApp = isUpdatedSystem,
+                isStopped = isStopped,
                 isRecentlyActive = !isStopped && (lastUsed > now - 3_600_000L || fgTime > 0L),
                 lastTimeUsedMillis = lastUsed,
                 totalForegroundMillis24h = fgTime,
@@ -144,6 +145,42 @@ object AppInspectorEngine {
         return settingValue.split(':')
             .mapNotNull { token -> token.substringBefore('/').trim().takeIf { it.isNotEmpty() } }
             .toSet()
+    }
+
+    fun selectNonEssentialRunningTargets(
+        processes: List<InstalledProcessEntry>,
+        protectedPackages: Set<String>,
+        ownPackage: String = "com.sentinel.monitor"
+    ): List<InstalledProcessEntry> {
+        val dynamicProtected = protectedPackages + ownPackage
+        return processes.filter { entry ->
+            !entry.isSystemApp &&
+                !entry.isStopped &&
+                entry.packageName != ownPackage &&
+                !SystemTelemetryEngine.shouldProtectPackageFromSweep(entry.packageName, dynamicProtected)
+        }
+    }
+
+    fun selectCacheHogTargets(
+        processes: List<InstalledProcessEntry>,
+        ownPackage: String = "com.sentinel.monitor",
+        minCacheBytes: Long = 512 * 1024L,
+        maxTargets: Int = 15
+    ): List<InstalledProcessEntry> {
+        return processes.filter { entry ->
+            entry.packageName != ownPackage &&
+                entry.cacheBytes >= minCacheBytes &&
+                (!entry.isSystemApp || entry.isUpdatedSystemApp)
+        }.sortedByDescending { it.cacheBytes }
+            .take(maxTargets)
+    }
+
+    fun canUseSystemClearAllCacheDialog(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val intent = android.content.Intent(StorageManager.ACTION_CLEAR_APP_CACHE)
+        return runCatching {
+            intent.resolveActivity(context.packageManager) != null
+        }.getOrDefault(false)
     }
 
     private fun classifyInstallerSource(

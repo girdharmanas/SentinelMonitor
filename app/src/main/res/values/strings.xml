@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Sentinel Monitor</string>
+    <string name="sentinel_automation_service_label">Sentinel Process &amp; Cache Automation</string>
+    <string name="sentinel_automation_service_desc">Used solely when you tap Stop Non-Essential Processes or Auto-Clear Cache inside Sentinel Monitor to automate clicking Force Stop or Clear Cache in Android App Settings. Never reads personal text or touches app data.</string>
 </resources>

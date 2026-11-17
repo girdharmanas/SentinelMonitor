@@ -2,8 +2,12 @@ package com.sentinel.monitor.ui.dashboard
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.storage.StorageManager
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -54,7 +58,9 @@ import com.sentinel.monitor.data.model.VitalsHistoryPoint
 import com.sentinel.monitor.data.preferences.SentinelPreferencesRepository
 import com.sentinel.monitor.data.preferences.SentinelSettings
 import com.sentinel.monitor.service.MiniHudOverlayService
+import com.sentinel.monitor.service.SentinelAutomationService
 import com.sentinel.monitor.service.SentinelWatchdogJobService
+import com.sentinel.monitor.ui.components.AutomationSetupBottomSheet
 import com.sentinel.monitor.ui.components.SentinelMonitorCrestBadge
 import com.sentinel.monitor.ui.theme.SentinelEmerald
 import com.sentinel.monitor.ui.theme.SentinelObsidian
@@ -76,6 +82,7 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
     val settings by SentinelPreferencesRepository.settingsFlow(context)
         .collectAsState(initial = SentinelSettings())
     val isMiniHudRunning by MiniHudOverlayService.isRunningFlow.collectAsState()
+    val automationProgress by SentinelAutomationService.progressFlow.collectAsState()
     val requestedTab by deepLinkTabFlow.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(SentinelTab.VITALS) }
@@ -87,12 +94,48 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
     var sweepBanner by remember { mutableStateOf<String?>(null) }
     var watchdogBanner by remember { mutableStateOf<String?>(null) }
 
+    // Automation setup bottom sheet state (shown when Accessibility isn't enabled yet)
+    var pendingSetupPromptTitle by remember { mutableStateOf<String?>(null) }
+    var pendingSetupAllowCacheDialog by remember { mutableStateOf(false) }
+
+    val canUseSystemClearAllDialog = remember(context) {
+        AppInspectorEngine.canUseSystemClearAllCacheDialog(context)
+    }
+
+    val systemClearCacheLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        scope.launch {
+            snapshot = SystemTelemetryEngine.sampleSnapshot(context)
+            processes = SystemTelemetryEngine.queryProcessCatalog(context)
+        }
+    }
+
+    val nonEssentialRunning = remember(processes, settings.protectedPackages) {
+        AppInspectorEngine.selectNonEssentialRunningTargets(
+            processes = processes,
+            protectedPackages = settings.protectedPackages,
+            ownPackage = context.packageName
+        )
+    }
+    val totalReclaimableCacheBytes = remember(processes) {
+        processes.sumOf { it.cacheBytes }
+    }
+
     val liveRamSparkline = remember { mutableStateListOf<Float>() }
     val liveCpuSparkline = remember { mutableStateListOf<Float>() }
 
     LaunchedEffect(requestedTab) {
         if (requestedTab != null) {
             selectedTab = requestedTab!!
+        }
+    }
+
+    // Refresh process & storage catalog automatically when an automation batch completes
+    LaunchedEffect(automationProgress.isRunning, automationProgress.lastSummaryBanner) {
+        if (!automationProgress.isRunning && automationProgress.lastSummaryBanner != null) {
+            snapshot = SystemTelemetryEngine.sampleSnapshot(context)
+            processes = SystemTelemetryEngine.queryProcessCatalog(context)
         }
     }
 
@@ -143,6 +186,51 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
     val openUsageAccess: () -> Unit = {
         runCatching {
             context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+        }
+    }
+
+    val launchSystemClearAllCacheDialog: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && canUseSystemClearAllDialog) {
+            runCatching {
+                systemClearCacheLauncher.launch(Intent(StorageManager.ACTION_CLEAR_APP_CACHE))
+            }.onFailure {
+                Toast.makeText(context, "System cache dialog unavailable on this ROM", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val triggerStopNonEssential: (String) -> Unit = { returnTab ->
+        if (SentinelAutomationService.isEnabled(context)) {
+            if (!SentinelAutomationService.startForceStopNonEssential(nonEssentialRunning, returnTab)) {
+                pendingSetupPromptTitle = "Process Stopping"
+                pendingSetupAllowCacheDialog = false
+            }
+        } else {
+            pendingSetupPromptTitle = "Process Stopping"
+            pendingSetupAllowCacheDialog = false
+        }
+    }
+
+    val triggerForceStopSingle: (InstalledProcessEntry, String) -> Unit = { target, returnTab ->
+        if (SentinelAutomationService.isEnabled(context)) {
+            if (!SentinelAutomationService.startForceStopNonEssential(listOf(target), returnTab)) {
+                openAppDetails(target.packageName)
+            }
+        } else {
+            pendingSetupPromptTitle = "Force Stop (${target.appLabel})"
+            pendingSetupAllowCacheDialog = false
+        }
+    }
+
+    val triggerAutoClearCaches: (List<InstalledProcessEntry>, String) -> Unit = { targets, returnTab ->
+        if (SentinelAutomationService.isEnabled(context)) {
+            if (!SentinelAutomationService.startClearCaches(targets, returnTab)) {
+                pendingSetupPromptTitle = "Cache Cleaning"
+                pendingSetupAllowCacheDialog = canUseSystemClearAllDialog
+            }
+        } else {
+            pendingSetupPromptTitle = "Cache Cleaning"
+            pendingSetupAllowCacheDialog = canUseSystemClearAllDialog
         }
     }
 
@@ -258,6 +346,9 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
                 liveCpuSparkline = liveCpuSparkline,
                 isSweeping = isSweeping,
                 sweepBanner = sweepBanner,
+                automationProgress = automationProgress,
+                nonEssentialRunningCount = nonEssentialRunning.size,
+                reclaimableCacheBytes = totalReclaimableCacheBytes,
                 isMiniHudRunning = isMiniHudRunning,
                 protectedCount = settings.protectedPackages.size,
                 onRunMemorySweep = {
@@ -272,18 +363,40 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
                         }
                     }
                 },
+                onStopNonEssentialProcesses = { triggerStopNonEssential("overview") },
+                onAutoClearAllCaches = {
+                    if (!snapshot.hasUsageStatsAccess && canUseSystemClearAllDialog) {
+                        launchSystemClearAllCacheDialog()
+                    } else {
+                        val hogs = AppInspectorEngine.selectCacheHogTargets(processes, context.packageName)
+                        if (hogs.isEmpty() && canUseSystemClearAllDialog) {
+                            launchSystemClearAllCacheDialog()
+                        } else {
+                            triggerAutoClearCaches(hogs, "overview")
+                        }
+                    }
+                },
+                onCancelAutomation = { SentinelAutomationService.cancelActiveRun() },
+                onDismissAutomationBanner = { SentinelAutomationService.clearBanner() },
                 onToggleMiniHud = toggleMiniHud,
                 onOpenUsageAccess = openUsageAccess,
                 modifier = Modifier.padding(innerPadding)
             )
             SentinelTab.PROCESSES -> ProcessesTab(
                 processes = processes,
+                nonEssentialRunning = nonEssentialRunning,
                 exitSummaries = exitSummaries,
                 protectedPackages = settings.protectedPackages,
+                automationProgress = automationProgress,
                 hasUsageAccess = snapshot.hasUsageStatsAccess,
                 onToggleProtected = { pkg ->
                     scope.launch { SentinelPreferencesRepository.toggleProtectedPackage(context, pkg) }
                 },
+                onStopAllNonEssential = { triggerStopNonEssential("processes") },
+                onForceStopSingleApp = { entry -> triggerForceStopSingle(entry, "processes") },
+                onClearCacheSingleApp = { entry -> triggerAutoClearCaches(listOf(entry), "processes") },
+                onCancelAutomation = { SentinelAutomationService.cancelActiveRun() },
+                onDismissAutomationBanner = { SentinelAutomationService.clearBanner() },
                 onOpenAppDetails = openAppDetails,
                 onUninstallApp = { pkg ->
                     runCatching {
@@ -298,6 +411,16 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
             SentinelTab.STORAGE -> StorageTab(
                 snapshot = snapshot,
                 processes = processes,
+                automationProgress = automationProgress,
+                canUseSystemClearAllDialog = canUseSystemClearAllDialog,
+                onAutoClearTopCaches = {
+                    val hogs = AppInspectorEngine.selectCacheHogTargets(processes, context.packageName)
+                    triggerAutoClearCaches(hogs, "storage")
+                },
+                onSystemClearAllCaches = launchSystemClearAllCacheDialog,
+                onClearSingleAppCache = { entry -> triggerAutoClearCaches(listOf(entry), "storage") },
+                onCancelAutomation = { SentinelAutomationService.cancelActiveRun() },
+                onDismissAutomationBanner = { SentinelAutomationService.clearBanner() },
                 onOpenAppStorage = openAppDetails,
                 onGrantUsageAccess = openUsageAccess,
                 modifier = Modifier.padding(innerPadding)
@@ -336,5 +459,20 @@ fun SentinelApp(deepLinkTabFlow: StateFlow<SentinelTab?>) {
                 modifier = Modifier.padding(innerPadding)
             )
         }
+    }
+
+    if (pendingSetupPromptTitle != null) {
+        AutomationSetupBottomSheet(
+            requestedActionTitle = pendingSetupPromptTitle!!,
+            showSystemCacheFallback = pendingSetupAllowCacheDialog,
+            onOpenAccessibilitySettings = {
+                runCatching {
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }
+            },
+            onOpenOwnAppInfo = { openAppDetails(context.packageName) },
+            onUseSystemClearCacheDialog = launchSystemClearAllCacheDialog,
+            onDismiss = { pendingSetupPromptTitle = null }
+        )
     }
 }

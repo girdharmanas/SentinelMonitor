@@ -75,6 +75,20 @@
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
+        <!-- User-Triggered Accessibility Automation for 1-Tap Force-Stop & Cache Cleaning -->
+        <service
+            android:name=".service.SentinelAutomationService"
+            android:exported="true"
+            android:label="@string/sentinel_automation_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/sentinel_automation_accessibility" />
+        </service>
+
         <!-- Boot Receiver to re-arm Watchdog JobScheduler & refresh Home Widget -->
         <receiver
             android:name=".service.SentinelBootReceiver"

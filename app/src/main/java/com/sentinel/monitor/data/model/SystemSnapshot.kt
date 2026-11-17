@@ -218,6 +218,7 @@ data class InstalledProcessEntry(
     val targetSdk: Int = 35,
     val isSystemApp: Boolean,
     val isUpdatedSystemApp: Boolean = false,
+    val isStopped: Boolean = false,
     val isRecentlyActive: Boolean,
     val lastTimeUsedMillis: Long,
     val totalForegroundMillis24h: Long,

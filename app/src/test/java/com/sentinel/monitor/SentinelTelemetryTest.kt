@@ -8,6 +8,7 @@ import com.sentinel.monitor.data.model.SystemSnapshot
 import com.sentinel.monitor.data.model.TelemetryFormatters
 import com.sentinel.monitor.data.model.TelemetryRag
 import com.sentinel.monitor.data.model.VitalsHistoryPoint
+import com.sentinel.monitor.service.SentinelAutomationService
 import com.sentinel.monitor.util.AppInspectorEngine
 import com.sentinel.monitor.util.SystemTelemetryEngine
 import org.junit.Assert.assertEquals
@@ -141,5 +142,87 @@ class SentinelTelemetryTest {
         )
         assertTrue(report.summaryLabel().contains("156.0 MB"))
         assertTrue(report.summaryLabel().contains("2 protected"))
+    }
+
+    @Test
+    fun automationSafetyMatchersAndTargetSelectors_neverTouchUserDataOrProtectedApps() {
+        // 1. Ironclad Clear-Cache matcher: accepts Clear Cache, hard-blocks Clear Storage / Clear Data!
+        assertTrue(SentinelAutomationService.isSafeClearCacheLabel("Clear cache"))
+        assertTrue(SentinelAutomationService.isSafeClearCacheLabel("CLEAR CACHE"))
+        assertTrue(SentinelAutomationService.isSafeClearCacheLabel("Clear app cache"))
+        assertFalse(SentinelAutomationService.isSafeClearCacheLabel("Clear storage"))
+        assertFalse(SentinelAutomationService.isSafeClearCacheLabel("Clear data"))
+        assertFalse(SentinelAutomationService.isSafeClearCacheLabel("Clear all data"))
+        assertFalse(SentinelAutomationService.isSafeClearCacheLabel("Manage space"))
+        assertFalse(SentinelAutomationService.isSafeClearCacheLabel("Uninstall"))
+
+        // 2. Storage subpage row matcher (supports Compose merged multi-line rows)
+        assertTrue(SentinelAutomationService.isStorageSectionLabel("Storage & cache"))
+        assertTrue(SentinelAutomationService.isStorageSectionLabel("Storage & cache\n312 MB used in internal storage"))
+        assertTrue(SentinelAutomationService.isStorageSectionLabel("Storage\n128 MB used"))
+        assertFalse(SentinelAutomationService.isStorageSectionLabel("Clear storage"))
+
+        // 3. Force Stop & Confirm dialog matchers
+        assertTrue(SentinelAutomationService.isForceStopButtonLabel("Force stop"))
+        assertTrue(SentinelAutomationService.isForceStopConfirmButtonLabel("OK"))
+        assertTrue(SentinelAutomationService.isForceStopConfirmButtonLabel("Force stop"))
+        assertFalse(SentinelAutomationService.isForceStopConfirmButtonLabel("Cancel"))
+
+        // 4. Target selectors exclude stopped apps, protected suite apps, system apps, and whitelist
+        val sampleApps = listOf(
+            InstalledProcessEntry(
+                packageName = "com.example.hog1",
+                appLabel = "Hog One",
+                isSystemApp = false,
+                isStopped = false,
+                isRecentlyActive = true,
+                lastTimeUsedMillis = 1000L,
+                totalForegroundMillis24h = 5000L,
+                cacheBytes = 85L * 1024 * 1024
+            ),
+            InstalledProcessEntry(
+                packageName = "com.example.alreadystopped",
+                appLabel = "Already Stopped",
+                isSystemApp = false,
+                isStopped = true,
+                isRecentlyActive = false,
+                lastTimeUsedMillis = 0L,
+                totalForegroundMillis24h = 0L,
+                cacheBytes = 12L * 1024 * 1024
+            ),
+            InstalledProcessEntry(
+                packageName = "com.spotify.music",
+                appLabel = "Spotify",
+                isSystemApp = false,
+                isStopped = false,
+                isRecentlyActive = true,
+                lastTimeUsedMillis = 1000L,
+                totalForegroundMillis24h = 9000L,
+                cacheBytes = 240L * 1024 * 1024
+            ),
+            InstalledProcessEntry(
+                packageName = "com.sentinel.launcher",
+                appLabel = "Sentinel Launcher",
+                isSystemApp = false,
+                isStopped = false,
+                isRecentlyActive = true,
+                lastTimeUsedMillis = 2000L,
+                totalForegroundMillis24h = 60000L,
+                cacheBytes = 2L * 1024 * 1024
+            )
+        )
+
+        val stopTargets = AppInspectorEngine.selectNonEssentialRunningTargets(
+            processes = sampleApps,
+            protectedPackages = setOf("com.spotify.music"),
+            ownPackage = "com.sentinel.monitor"
+        )
+        assertEquals(listOf("com.example.hog1"), stopTargets.map { it.packageName })
+
+        val cacheTargets = AppInspectorEngine.selectCacheHogTargets(
+            processes = sampleApps,
+            ownPackage = "com.sentinel.monitor"
+        )
+        assertEquals("com.spotify.music", cacheTargets.first().packageName)
     }
 }
